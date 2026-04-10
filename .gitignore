@@ -1,0 +1,15 @@
+# Swift / Xcode
+.build/
+.swiftpm/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/
+DerivedData/
+*.resolved
+
+# macOS
+.DS_Store
+.localized
+
+# Keys / secrets
+.env
+*.env
