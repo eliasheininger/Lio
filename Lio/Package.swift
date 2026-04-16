@@ -2,18 +2,18 @@
 import PackageDescription
 
 let package = Package(
-    name: "Whisk",
+    name: "Lio",
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
-            name: "Whisk",
-            path: "Whisk",
+            name: "Lio",
+            path: "Lio",
             exclude: [
-                "Resources/Info.plist",
-                "Resources/Whisk.entitlements",
+                "Shared/Resources/Info.plist",
+                "Shared/Resources/Lio.entitlements",
             ],
             resources: [
-                .process("Resources/Lio.svg")
+                .process("Shared/Resources/Lio.svg")
             ],
             swiftSettings: [
                 .unsafeFlags(["-parse-as-library"])

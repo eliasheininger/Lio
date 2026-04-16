@@ -50,3 +50,74 @@ func axStringValue(_ v: AnyObject?) -> String {
 func axFocusedApp() -> NSRunningApplication? {
     NSWorkspace.shared.frontmostApplication
 }
+
+/// Collect ALL elements (any role) recursively, up to maxDepth/maxCount
+func axCollectAll(_ el: AXUIElement, maxDepth: Int = 12, maxCount: Int = 500) -> [AXUIElement] {
+    var results: [AXUIElement] = []
+    results.reserveCapacity(min(maxCount, 128))
+    func recurse(_ el: AXUIElement, depth: Int) {
+        guard depth < maxDepth, results.count < maxCount else { return }
+        results.append(el)
+        for child in axGetChildren(el) {
+            guard results.count < maxCount else { return }
+            recurse(child, depth: depth + 1)
+        }
+    }
+    recurse(el, depth: 0)
+    return results
+}
+
+/// Lowercase, letters/numbers/spaces only, collapse whitespace
+func axNormalize(_ s: String) -> String {
+    let filtered = s.lowercased().filter { $0.isLetter || $0.isNumber || $0.isWhitespace }
+    return filtered.split(separator: " ").joined(separator: " ")
+}
+
+/// Fuzzy relevance score for an element vs a query string (0–1)
+func axScore(_ el: AXUIElement, query: String) -> Double {
+    let attrs: [String] = [kAXTitleAttribute as String, kAXDescriptionAttribute as String,
+                           kAXValueAttribute as String, kAXHelpAttribute as String,
+                           "AXPlaceholderValue"]
+
+    // Exact match pass — handles symbols like ×, ÷, −, = that normalize to empty
+    let ql = query.lowercased()
+    for attr in attrs {
+        guard let raw = axGetAttribute(el, attr) as? String,
+              raw != "(null)", !raw.isEmpty else { continue }
+        if raw.lowercased() == ql { return 1.0 }
+    }
+
+    let qn = axNormalize(query)
+    guard !qn.isEmpty else { return 0 }
+    var best = 0.0
+    for attr in attrs {
+        guard let raw = axGetAttribute(el, attr) as? String,
+              raw != "(null)", !raw.isEmpty else { continue }
+        let vn = axNormalize(raw)
+        guard !vn.isEmpty else { continue }
+        let score: Double
+        if vn == qn                 { score = 1.0 }
+        else if vn.hasPrefix(qn)    { score = 0.9 }
+        else if vn.contains(qn)     { score = 0.75 }
+        else if qn.contains(vn)     { score = 0.6 }
+        else {
+            let qWords = Set(qn.split(separator: " ").map(String.init))
+            let vWords = Set(vn.split(separator: " ").map(String.init))
+            let overlap = qWords.intersection(vWords).count
+            score = overlap > 0 ? 0.4 + Double(overlap) / Double(qWords.count) * 0.2 : 0
+        }
+        if score > best { best = score }
+    }
+    return best
+}
+
+/// Read screen-space frame of an AX element (nil if attributes missing or wrong type)
+func axFrame(_ el: AXUIElement) -> CGRect? {
+    guard let posVal  = axGetAttribute(el, kAXPositionAttribute as String),
+          let sizeVal = axGetAttribute(el, kAXSizeAttribute as String) else { return nil }
+    var point = CGPoint.zero
+    var size  = CGSize.zero
+    guard AXValueGetValue(posVal as! AXValue, .cgPoint, &point),
+          AXValueGetValue(sizeVal as! AXValue, .cgSize, &size) else { return nil }
+    return CGRect(origin: point, size: size)
+}

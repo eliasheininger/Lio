@@ -18,8 +18,6 @@ final class AnthropicClient {
     private let baseURL = URL(string: "https://api.anthropic.com/v1/messages")!
 
     private static func loadDotEnv() -> [String: String] {
-        // Build a list of directories to search: cwd + up to 4 parents,
-        // then executable dir + up to 4 parents.
         func ancestors(of path: String) -> [String] {
             var dirs: [String] = []
             var url = URL(fileURLWithPath: path, isDirectory: true)
@@ -43,7 +41,6 @@ final class AnthropicClient {
                 if seen.insert(dir).inserted { candidates.append(dir) }
             }
         }
-        // Fallback for when Whisk.app is installed to /Applications
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         if seen.insert(home + "/.config/whisk").inserted {
             candidates.append(home + "/.config/whisk")
@@ -66,7 +63,7 @@ final class AnthropicClient {
                 }
                 vars[key] = value
             }
-            return vars  // stop at first .env found
+            return vars
         }
         return vars
     }
@@ -90,15 +87,14 @@ final class AnthropicClient {
         enc.keyEncodingStrategy = .convertToSnakeCase
         req.httpBody = try enc.encode(request)
 
-        // Debug: log request body
         if let body = req.httpBody, let bodyStr = String(data: body, encoding: .utf8) {
-            print("[Whisk] Request body: \(bodyStr)")
+            print("[Lio] Request body length: \(bodyStr.count) chars")
         }
 
         let (data, response) = try await URLSession.shared.data(for: req)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
             let body = String(data: data, encoding: .utf8) ?? ""
-            print("[Whisk] HTTP \(http.statusCode): \(body)")
+            print("[Lio] HTTP \(http.statusCode): \(body)")
             throw AnthropicError.httpError(http.statusCode, body)
         }
 

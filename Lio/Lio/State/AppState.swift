@@ -33,8 +33,7 @@ enum AppPhase: Equatable {
 
 // MARK: - App State
 
-/// Central observable state — replaces /tmp/whisk_status.json.
-/// All mutations must happen on the main thread.
+/// Central observable state — all mutations must happen on the main thread.
 @MainActor
 final class AppState: ObservableObject {
     @Published var phase: AppPhase = .idle

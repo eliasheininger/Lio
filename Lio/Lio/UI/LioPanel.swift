@@ -1,7 +1,7 @@
 import AppKit
 
-/// Floating non-activating borderless panel — identical character to the current widget.
-final class WhiskPanel: NSPanel {
+/// Floating non-activating borderless panel — the Lio HUD pill.
+final class LioPanel: NSPanel {
 
     init(contentNSView: NSView) {
         let screen = NSScreen.main?.visibleFrame ?? .zero
@@ -58,15 +58,13 @@ private final class DragView: NSView {
     override func mouseDown(with e: NSEvent)       { panel?.performDrag(with: e) }
 
     override func hitTest(_ p: NSPoint) -> NSView? {
-        // Let subviews (SwiftUI content) claim the click first.
-        // Only fall back to self — for dragging — if no subview wants it.
         if let hit = super.hitTest(p), hit !== self { return hit }
         return self
     }
 
     override func rightMouseDown(with e: NSEvent) {
         let m = NSMenu()
-        m.addItem(withTitle: "Quit Whisk", action: #selector(quit), keyEquivalent: "q")
+        m.addItem(withTitle: "Quit Lio", action: #selector(quit), keyEquivalent: "q")
         NSMenu.popUpContextMenu(m, with: e, for: self)
     }
     @objc private func quit() { NSApp.terminate(nil) }

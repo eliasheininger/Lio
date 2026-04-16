@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Drives the Claude agentic loop — replaces ax_brain.py.
@@ -15,9 +16,14 @@ final class BrainEngine {
     init(state: AppState) { self.state = state }
 
     func run(instruction: String) async {
-        var messages: [Message] = [
-            Message(role: "user", content: .text(instruction))
-        ]
+        // Prepend last-session context so Claude can skip re-discovery
+        var messages: [Message] = []
+        if let mem = WhiskMemoryStore.shared.load() {
+            let ctx = "[Context from last session] \(mem.contextNote) Last task: \(mem.lastTask)"
+            messages.append(Message(role: "user",      content: .text(ctx)))
+            messages.append(Message(role: "assistant", content: .text("Understood. I'll use this context.")))
+        }
+        messages.append(Message(role: "user", content: .text(instruction)))
 
         // Build steps list for progress card
         var steps: [StepItem] = []
@@ -68,9 +74,20 @@ final class BrainEngine {
                     steps.append(StepItem(text: label, completed: false))
                     state.phase = .progress(steps: steps, completedCount: completedCount, summary: "")
 
-                    // Execute tool
+                    // Execute tool (with confirmation gate for destructive actions)
                     let rawInput = input.mapValues(\.value)
-                    let result   = await runner.execute(toolName: name, inputs: rawInput)
+                    let result: String
+                    if let confirmMsg = isCritical(tool: name, inputs: rawInput) {
+                        let allowed = await requestConfirmation(message: confirmMsg)
+                        if allowed {
+                            result = await runner.execute(toolName: name, inputs: rawInput)
+                        } else {
+                            result = "Action cancelled by user."
+                            state.phase = .progress(steps: steps, completedCount: completedCount, summary: "")
+                        }
+                    } else {
+                        result = await runner.execute(toolName: name, inputs: rawInput)
+                    }
 
                     // Mark last step done
                     if let idx = steps.indices.last {
@@ -109,15 +126,82 @@ final class BrainEngine {
             summary = "Done"
         }
         state.phase = .success(message: summary)
+        saveMemory(task: instruction, summary: summary)
         scheduleReset()
     }
 
     // MARK: - Helpers
 
+    private func saveMemory(task: String, summary: String) {
+        let frontmost = NSWorkspace.shared.frontmostApplication?.localizedName ?? "Unknown"
+        WhiskMemoryStore.shared.save(WhiskMemory(
+            lastTask: task,
+            frontmostApp: frontmost,
+            contextNote: summary
+        ))
+    }
+
     private func scheduleReset() {
         Task {
             try? await Task.sleep(for: .seconds(2.5))
             state.phase = .idle
+        }
+    }
+
+    // MARK: - Safety confirmation
+
+    /// Returns a user-facing warning message if the tool call is potentially destructive,
+    /// otherwise returns nil (no confirmation needed).
+    private func isCritical(tool: String, inputs: [String: Any]) -> String? {
+        func str(_ key: String) -> String { inputs[key] as? String ?? "" }
+
+        switch tool {
+
+        case "press_shortcut":
+            let s = str("shortcut").lowercased()
+            let destructive = [
+                "cmd+q", "command+q",
+                "cmd+option+esc",
+                "cmd+w", "cmd+option+w",
+                "cmd+delete", "cmd+backspace",
+                "ctrl+delete", "ctrl+backspace"
+            ]
+            if destructive.contains(where: { s.contains($0) }) {
+                return "Whisk wants to press \(str("shortcut")).\nThis may close or quit something."
+            }
+
+        case "press_button", "click_element":
+            let raw = str("label").isEmpty ? str("query") : str("label")
+            let label = raw.lowercased()
+            let destructiveWords = [
+                "delete", "remove", "trash", "move to trash",
+                "close", "close all", "discard", "discard changes", "don't save", "dont save",
+                "quit", "force quit", "terminate", "kill",
+                "overwrite", "replace", "replace all",
+                "uninstall", "erase", "format", "reset", "clear all", "wipe"
+            ]
+            if destructiveWords.contains(where: { label.contains($0) }) {
+                return "Whisk wants to click \"\(raw)\".\nThis action may be irreversible."
+            }
+
+        default: break
+        }
+        return nil
+    }
+
+    /// Suspends the agentic loop, shows a confirmation card, and resumes when the user responds.
+    private func requestConfirmation(message: String) async -> Bool {
+        return await withCheckedContinuation { continuation in
+            state.permissionHandlers = (
+                accept: { continuation.resume(returning: true) },
+                deny:   { continuation.resume(returning: false) }
+            )
+            state.phase = .permission(
+                app: "Confirm Action",
+                message: message,
+                acceptLabel: "Allow",
+                denyLabel: "Cancel"
+            )
         }
     }
 
@@ -137,6 +221,14 @@ final class BrainEngine {
         case "press_tab":      return "Pressing Tab"
         case "press_return":   return "Pressing Return"
         case "open_url":       return "Opening URL"
+        case "find_elements":  return "Searching for \(input["query"]?.value as? String ?? "elements")"
+        case "scroll":         return "Scrolling \(input["direction"]?.value as? String ?? "")"
+        case "click_element":  return "Clicking \(input["query"]?.value as? String ?? "element")"
+        case "press_space":    return "Pressing Space"
+        case "shift_tab":      return "Tabbing backward"
+        case "press_shortcut": return "Shortcut \(input["shortcut"]?.value as? String ?? "")"
+        case "get_focused":    return "Checking focus"
+        case "tab_to":         return "Navigating to \(input["query"]?.value as? String ?? "element")"
         default:               return name
         }
     }

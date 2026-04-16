@@ -23,14 +23,16 @@ struct ProgressCardView: View {
 
             if !summary.isEmpty {
                 CardDivider()
-                HStack {
+                HStack(alignment: .top) {
                     Text(summary)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.aPrimary)
-                    Spacer()
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineSpacing(2)
+                    Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 16)
-                .frame(height: 46)
+                .padding(.vertical, 14)
             }
         }
         .frame(width: PANEL_W)
@@ -52,7 +54,6 @@ private struct StepRow: View {
 
             // ── Icon column ──────────────────────────────────────
             VStack(spacing: 0) {
-                // Circle border + icon (or spinner)
                 ZStack {
                     Circle()
                         .strokeBorder(iconColor, lineWidth: lineWidth)
@@ -70,7 +71,6 @@ private struct StepRow: View {
                 }
                 .frame(width: dotSize, height: dotSize)
 
-                // Line: runs from bottom edge of circle to top edge of next circle
                 if !isLast {
                     Rectangle()
                         .fill(Color(white: 0.78))
@@ -85,9 +85,9 @@ private struct StepRow: View {
                 .foregroundColor(step.completed ? Color(white: 0.52) : Color(white: 0.08))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: dotSize)          // same height as dot → centres vertically
+                .frame(height: dotSize)
         }
         .padding(.horizontal, 16)
-        .frame(height: rowHeight)                // fixed height keeps line math exact
+        .frame(height: rowHeight)
     }
 }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Height preference — ContentView reports its ideal height up to WhiskPanelController
+// Height preference — ContentView reports its ideal height up to LioPanelController
 struct PanelHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = PILL_H
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -27,8 +27,6 @@ struct ContentView: View {
 
             phaseView
         }
-        // fixedSize forces SwiftUI to lay out at ideal height even when the
-        // NSHostingView is currently smaller (during panel resize animation).
         .fixedSize(horizontal: true, vertical: true)
         .background(
             GeometryReader { geo in

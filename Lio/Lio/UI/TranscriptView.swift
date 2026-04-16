@@ -13,7 +13,6 @@ struct TranscriptView: View {
             CardDivider()
 
             HStack(alignment: .top, spacing: 10) {
-                // Circle + icon matching step row style
                 ZStack {
                     Circle()
                         .strokeBorder(iconColor, lineWidth: lineWidth)

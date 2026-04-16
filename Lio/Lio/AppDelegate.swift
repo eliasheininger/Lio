@@ -9,8 +9,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotkey     = HotkeyEngine()
     private let audio      = AudioEngine()
     private let speech     = SpeechEngine()
+    private let cursor     = CursorOverlayWindow()
     private var brain: BrainEngine!
-    private var panel: WhiskPanelController!
+    private var panel: LioPanelController!
 
     private var statusItem: NSStatusItem?
     private var isPanelVisible = false
@@ -20,13 +21,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("[AppDelegate] applicationDidFinishLaunching")
         NSApp.setActivationPolicy(.accessory)
 
-        brain = BrainEngine(state: state)
-        panel = WhiskPanelController(state: state)
+        brain = BrainEngine(state: state, cursor: cursor)
+        panel = LioPanelController(state: state)
 
         setupStatusItem()
         observePhase()
-
         requestMicrophoneAccess()
+        checkAndRequestScreenRecording()
 
         hotkey.onKeyDown = { [weak self] in
             NSLog("[AppDelegate] onKeyDown fired")
@@ -37,22 +38,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in await self?.stopRecording() }
         }
         hotkey.onPermissionNeeded = { [weak self] in
-            NSLog("[AppDelegate] onPermissionNeeded fired — showing Accessibility card")
+            NSLog("[AppDelegate] onPermissionNeeded — showing Accessibility card")
             guard let self else { return }
             Task { @MainActor in self.showAccessibilityPermission() }
         }
         hotkey.onTapFailed = { [weak self] in
-            NSLog("[AppDelegate] onTapFailed fired — showing Input Monitoring card")
+            NSLog("[AppDelegate] onTapFailed — showing Input Monitoring card")
             guard let self else { return }
             Task { @MainActor in self.showInputMonitoringPermission() }
         }
 
         NSLog("[AppDelegate] calling hotkey.start()")
         hotkey.start()
-        NSLog("[AppDelegate] hotkey.start() returned")
     }
 
-    // MARK: - Permission
+    // MARK: - Screen Recording
+
+    private func checkAndRequestScreenRecording() {
+        if #available(macOS 14.2, *) {
+            if !CGPreflightScreenCaptureAccess() {
+                CGRequestScreenCaptureAccess()
+                // Show the panel with a brief instruction after the system prompt
+                Task {
+                    try? await Task.sleep(for: .milliseconds(800))
+                    if !CGPreflightScreenCaptureAccess() {
+                        showScreenRecordingPermission()
+                    }
+                }
+            }
+        }
+        // On macOS 13 the prompt fires on first capture attempt
+    }
+
+    private func showScreenRecordingPermission() {
+        state.permissionHandlers = (
+            accept: { [weak self] in
+                let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!
+                NSWorkspace.shared.open(url)
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(400))
+                    self?.state.phase = .idle
+                }
+            },
+            deny: { [weak self] in
+                Task { @MainActor in self?.state.phase = .idle }
+            }
+        )
+        panel.show()
+        isPanelVisible = true
+        state.phase = .permission(
+            app: "Screen Recording",
+            message: "Lio needs Screen Recording to see your screen.\n\nOpen Settings → Privacy & Security → Screen Recording, enable Lio, then relaunch.",
+            acceptLabel: "Open Settings",
+            denyLabel: "Not now"
+        )
+    }
+
+    // MARK: - Accessibility / Input Monitoring Permissions
 
     private func showInputMonitoringPermission() {
         state.permissionHandlers = (
@@ -72,7 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         isPanelVisible = true
         state.phase = .permission(
             app: "Input Monitoring",
-            message: "Whisk needs Input Monitoring permission to detect the Option key.\n\nOpen Settings → Privacy & Security → Input Monitoring, enable Whisk, then relaunch."
+            message: "Lio needs Input Monitoring permission to detect the Option key.\n\nOpen Settings → Privacy & Security → Input Monitoring, enable Lio, then relaunch."
         )
     }
 
@@ -94,7 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         isPanelVisible = true
         state.phase = .permission(
             app: "Accessibility",
-            message: "Whisk needs Accessibility permission to detect the Option key.\n\nOpen Settings → Privacy & Security → Accessibility, enable Whisk, then relaunch."
+            message: "Lio needs Accessibility permission to detect the Option key.\n\nOpen Settings → Privacy & Security → Accessibility, enable Lio, then relaunch."
         )
     }
 
@@ -120,7 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let event = NSApp.currentEvent else { return }
         if event.type == .rightMouseUp {
             let menu = NSMenu()
-            menu.addItem(withTitle: "Quit Whisk",
+            menu.addItem(withTitle: "Quit Lio",
                          action: #selector(NSApplication.terminate(_:)),
                          keyEquivalent: "q")
             statusItem?.menu = menu
@@ -133,11 +175,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func togglePanel() {
         if isPanelVisible {
-            NSLog("[AppDelegate] togglePanel → hiding")
             panel.hide()
             isPanelVisible = false
         } else {
-            NSLog("[AppDelegate] togglePanel → showing")
             panel.show()
             isPanelVisible = true
         }
@@ -167,11 +207,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Recording flow
 
     private func startRecording() async {
-        NSLog("[AppDelegate] startRecording called — phase=\(state.phase) isPanelVisible=\(isPanelVisible)")
+        NSLog("[AppDelegate] startRecording — phase=\(state.phase) visible=\(isPanelVisible)")
 
-        // Right Option during a confirmation card = Allow
+        // Right Option during a confirmation card = Accept
         if case .permission = state.phase {
-            NSLog("[AppDelegate] startRecording: forwarding Right Option as confirmation accept")
             state.permissionHandlers?.accept()
             return
         }
@@ -180,20 +219,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel.show()
             isPanelVisible = true
         }
-        guard state.phase == .idle else {
-            NSLog("[AppDelegate] startRecording: not idle, aborting")
-            return
-        }
+        guard state.phase == .idle else { return }
         state.phase = .recording
         audio.onLevelUpdate = { [weak self] level in
             Task { @MainActor in self?.state.audioLevel = level }
         }
         do {
-            NSLog("[AppDelegate] calling audio.startRecording()")
             try audio.startRecording()
-            NSLog("[AppDelegate] audio.startRecording() succeeded")
         } catch {
-            NSLog("[AppDelegate] audio.startRecording() threw: \(error)")
             state.phase = .error(message: error.localizedDescription)
             try? await Task.sleep(for: .seconds(2.5))
             state.phase = .idle
@@ -201,13 +234,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func stopRecording() async {
-        NSLog("[AppDelegate] stopRecording called — phase=\(state.phase)")
+        NSLog("[AppDelegate] stopRecording — phase=\(state.phase)")
         guard case .recording = state.phase else { return }
         state.phase = .transcribing
         state.audioLevel = 0
 
         guard let fileURL = audio.stopRecording() else {
-            NSLog("[AppDelegate] stopRecording: no file URL")
             state.phase = .idle
             return
         }
@@ -217,11 +249,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             text = try await speech.transcribe(fileURL: fileURL)
             NSLog("[AppDelegate] transcribed: \"\(text)\"")
         } catch SpeechError.noSpeechDetected {
-            NSLog("[AppDelegate] no speech detected")
             state.phase = .idle
             return
         } catch {
-            NSLog("[AppDelegate] transcription error: \(error)")
             state.phase = .error(message: error.localizedDescription)
             try? await Task.sleep(for: .seconds(2.5))
             state.phase = .idle

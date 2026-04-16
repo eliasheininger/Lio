@@ -2,23 +2,25 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- No Dock icon, no visible menu bar — identical to current widget behaviour -->
+    <!-- No Dock icon, no visible menu bar -->
     <key>LSUIElement</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Whisk records your voice to transcribe commands.</string>
+    <string>Lio records your voice to transcribe commands.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
-    <string>Whisk transcribes your voice using Apple's on-device speech engine.</string>
+    <string>Lio transcribes your voice using Apple's on-device speech engine.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Lio captures your screen to understand what's on it and help you control it.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>CFBundleIdentifier</key>
-    <string>com.whisk.app</string>
+    <string>com.lio.app</string>
     <key>CFBundleName</key>
-    <string>Whisk</string>
+    <string>Lio</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>CFBundleExecutable</key>
-    <string>Whisk</string>
+    <string>Lio</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleShortVersionString</key>
