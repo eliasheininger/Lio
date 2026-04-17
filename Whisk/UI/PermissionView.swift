@@ -22,17 +22,17 @@ struct PermissionView: View {
                 .padding(.top, 14)
                 .padding(.bottom, 12)
 
-            HStack(spacing: 8) {
-                // Deny
-                Button(denyLabel) { onDeny?() }
-                    .buttonStyle(WhiskButtonStyle(primary: false))
-
+            VStack(spacing: 8) {
                 // Accept
                 Button(acceptLabel) { onAccept?() }
                     .buttonStyle(WhiskButtonStyle(primary: true))
+
+                // Deny
+                Button(denyLabel) { onDeny?() }
+                    .buttonStyle(WhiskButtonStyle(primary: false))
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 14)
+            .padding(.bottom, 16)
         }
         .frame(width: PANEL_W)
     }
@@ -44,10 +44,10 @@ struct WhiskButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12.5, weight: .medium))
+            .font(.system(size: 14, weight: .medium))
             .foregroundColor(primary ? .white : .aPrimary)
             .frame(maxWidth: .infinity)
-            .frame(height: 36)
+            .frame(height: 40)
             .background(
                 Capsule()
                     .fill(primary ? Color.aBlue : Color.black.opacity(0.08))
