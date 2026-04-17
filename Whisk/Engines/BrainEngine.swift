@@ -9,7 +9,7 @@ final class BrainEngine {
     private let runner  = AXRunner()
     private let state: AppState
 
-    private let model     = "claude-opus-4-6"
+    private let model     = "claude-haiku-4-5-20251001"
     private let maxTokens = 4096
     private let maxIter   = 15
 
