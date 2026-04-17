@@ -56,7 +56,7 @@ final class ScreenEngine {
 
     /// Capture the full main display (excluding Lio's own windows) so Claude
     /// can see everything — Dock, menu bar, all open windows.
-    func captureWindow(maxLongSide: Int = 1280, quality: CGFloat = 0.85) async throws -> CaptureResult {
+    func captureWindow(maxLongSide: Int = 640, quality: CGFloat = 0.85) async throws -> CaptureResult {
         guard #available(macOS 14.2, *) else {
             throw ScreenCaptureError.requiresMacOS14
         }
