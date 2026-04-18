@@ -52,7 +52,12 @@ final class CursorOverlayWindow: NSWindow {
         })
     }
 
-    func show() { orderFrontRegardless() }
+    func show() {
+        let mouse = NSEvent.mouseLocation
+        let half  = CursorOverlayWindow.size / 2
+        setFrameOrigin(CGPoint(x: mouse.x - half, y: mouse.y - half))
+        orderFrontRegardless()
+    }
     func hide() { orderOut(nil) }
 }
 

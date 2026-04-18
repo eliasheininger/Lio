@@ -10,9 +10,9 @@ final class BrainEngine {
     private let cursor: CursorOverlayWindow
     private let state:  AppState
 
-    private let model     = "claude-haiku-4-5-20251001"
+    private let model     = "claude-opus-4-6"
     private let maxTokens = 4096
-    private let maxIter   = 10
+    private let maxIter   = 25
 
     /// Signature of the last executed tool call (name + serialized inputs).
     /// Used for stall detection — if Claude repeats the exact same action, we inject a warning.
