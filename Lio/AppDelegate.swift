@@ -259,7 +259,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         state.phase = .transcript(text: text)
-        try? await Task.sleep(for: .milliseconds(600))
+        try? await Task.sleep(for: .milliseconds(1000))
         await brain.run(instruction: text)
     }
 

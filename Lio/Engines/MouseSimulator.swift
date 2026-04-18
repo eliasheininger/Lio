@@ -52,18 +52,39 @@ final class MouseSimulator {
         guard let keyName = parts.last else { return }
         let mods = Set(parts.dropLast())
 
+        // (virtualKey, flag) pairs — order matters for release
+        var modifierKeys: [(CGKeyCode, CGEventFlags)] = []
         var flags = CGEventFlags()
-        if mods.contains("cmd") || mods.contains("command") { flags.insert(.maskCommand) }
-        if mods.contains("shift")                           { flags.insert(.maskShift) }
-        if mods.contains("ctrl") || mods.contains("control") { flags.insert(.maskControl) }
-        if mods.contains("opt") || mods.contains("alt")    { flags.insert(.maskAlternate) }
+        if mods.contains("cmd") || mods.contains("command") {
+            flags.insert(.maskCommand);   modifierKeys.append((55, .maskCommand))
+        }
+        if mods.contains("shift") {
+            flags.insert(.maskShift);     modifierKeys.append((56, .maskShift))
+        }
+        if mods.contains("ctrl") || mods.contains("control") {
+            flags.insert(.maskControl);   modifierKeys.append((59, .maskControl))
+        }
+        if mods.contains("opt") || mods.contains("alt") {
+            flags.insert(.maskAlternate); modifierKeys.append((58, .maskAlternate))
+        }
 
         guard let keyCode = Self.keyCode(for: keyName) else {
             NSLog("[MouseSimulator] pressShortcut: unknown key '\(keyName)'")
             return
         }
 
-        let src  = CGEventSource(stateID: .hidSystemState)
+        let src = CGEventSource(stateID: .hidSystemState)
+
+        // Press modifier keys explicitly so HID state is correct
+        var heldFlags = CGEventFlags()
+        for (modKey, modFlag) in modifierKeys {
+            heldFlags.insert(modFlag)
+            let e = CGEvent(keyboardEventSource: src, virtualKey: modKey, keyDown: true)
+            e?.flags = heldFlags
+            e?.post(tap: .cghidEventTap)
+        }
+
+        // Press and release main key
         let down = CGEvent(keyboardEventSource: src, virtualKey: keyCode, keyDown: true)
         let up   = CGEvent(keyboardEventSource: src, virtualKey: keyCode, keyDown: false)
         down?.flags = flags
@@ -71,6 +92,15 @@ final class MouseSimulator {
         down?.post(tap: .cghidEventTap)
         try? await Task.sleep(for: .milliseconds(40))
         up?.post(tap: .cghidEventTap)
+
+        // Release modifier keys in reverse order so HID state is fully cleared
+        for (modKey, modFlag) in modifierKeys.reversed() {
+            heldFlags.remove(modFlag)
+            let e = CGEvent(keyboardEventSource: src, virtualKey: modKey, keyDown: false)
+            e?.flags = heldFlags
+            e?.post(tap: .cghidEventTap)
+        }
+
         try? await Task.sleep(for: .milliseconds(80))
     }
 
