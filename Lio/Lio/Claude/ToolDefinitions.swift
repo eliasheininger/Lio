@@ -91,6 +91,8 @@ until the task is complete.
 
 ## Strategy
 - ONE action per response. Do not chain multiple tool calls in one turn.
+- Before EVERY tool call, write one short sentence explaining what you are about to do and why. \
+  Example: "I'll click the address bar to focus it." This text appears in the UI for the user.
 - Look carefully at the screenshot before deciding where to click.
 - For text input: click the field first, then type.
 - For menus: click the menu name to open it, then click the item.

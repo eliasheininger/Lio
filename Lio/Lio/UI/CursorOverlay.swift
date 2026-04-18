@@ -52,7 +52,13 @@ final class CursorOverlayWindow: NSWindow {
         })
     }
 
-    func show() { orderFrontRegardless() }
+    func show() {
+        // Position at current mouse location so the badge appears where the user's cursor is
+        let mouse = NSEvent.mouseLocation
+        let half  = CursorOverlayWindow.size / 2
+        setFrameOrigin(CGPoint(x: mouse.x - half, y: mouse.y - half))
+        orderFrontRegardless()
+    }
     func hide() { orderOut(nil) }
 }
 

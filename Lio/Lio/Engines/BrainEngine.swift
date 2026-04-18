@@ -10,7 +10,7 @@ final class BrainEngine {
     private let cursor: CursorOverlayWindow
     private let state:  AppState
 
-    private let model     = "claude-haiku-4-5-20251001"
+    private let model     = "claude-sonnet-4-6"
     private let maxTokens = 4096
     private let maxIter   = 10
 
@@ -78,6 +78,7 @@ final class BrainEngine {
             var assistantBlocks: [ContentBlock] = []
             var toolResultBlocks: [ContentBlock] = []
             var hasToolUse = false
+            var pendingExplanation: String? = nil
 
             for block in response.content {
                 switch block {
@@ -85,6 +86,9 @@ final class BrainEngine {
                     assistantBlocks.append(.text(TextBlock(text: t)))
                     if response.stopReason == "end_turn" {
                         state.phase = .progress(steps: steps, completedCount: completedCount, summary: t)
+                    } else {
+                        // Narration before a tool call — hold it to use as the step label
+                        pendingExplanation = t.trimmingCharacters(in: .whitespacesAndNewlines)
                     }
 
                 case .toolUse(let id, let name, let input):
@@ -96,7 +100,8 @@ final class BrainEngine {
                     let isStalled = signature == lastToolSignature
                     lastToolSignature = signature
 
-                    let label = toolLabel(name: name, input: input)
+                    let label = pendingExplanation ?? toolLabel(name: name, input: input)
+                    pendingExplanation = nil
                     steps.append(StepItem(text: label, completed: false))
                     state.phase = .progress(steps: steps, completedCount: completedCount, summary: "")
 
