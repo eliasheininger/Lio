@@ -10,6 +10,12 @@ DerivedData/
 .DS_Store
 .localized
 
+# Build artifacts
+Lio.app/
+Lio.zip
+Whisk.app/
+Whisk.zip
+
 # Keys / secrets
 .env
 *.env

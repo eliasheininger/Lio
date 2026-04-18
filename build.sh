@@ -1,35 +1,73 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
+set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PRODUCT="Whisk"
-BUILD="${SCRIPT_DIR}/.build/release"
-APP="${SCRIPT_DIR}/${PRODUCT}.app"
-CONTENTS="${APP}/Contents"
+cd "$SCRIPT_DIR"
 
-echo "==> Building..."
-swift build -c release --package-path "${SCRIPT_DIR}"
+APP_NAME="Lio"
+APP_BUNDLE="$SCRIPT_DIR/$APP_NAME.app"
 
-echo "==> Assembling ${PRODUCT}.app..."
-rm -rf "${APP}"
-mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources"
+echo "→ Building release binary..."
+swift build -c release
 
-cp "${BUILD}/${PRODUCT}"                              "${CONTENTS}/MacOS/${PRODUCT}"
-cp -r "${BUILD}/${PRODUCT}_${PRODUCT}.bundle"         "${CONTENTS}/Resources/"
-cp "${SCRIPT_DIR}/${PRODUCT}/Resources/Info.plist"    "${CONTENTS}/Info.plist"
+BINARY=".build/release/$APP_NAME"
+RESOURCE_BUNDLE=".build/release/${APP_NAME}_${APP_NAME}.bundle"
 
-# Remove quarantine so Gatekeeper doesn't block the unsigned app.
-# We intentionally skip codesign — ad-hoc signing changes the binary hash every
-# build, causing macOS to revoke Accessibility permission on each rebuild.
-# Without signing, TCC uses bundle ID + path as a stable identity, so you only
-# need to grant Accessibility once.
-xattr -cr "${APP}"
+echo "→ Assembling $APP_NAME.app..."
+rm -rf "$APP_BUNDLE"
+mkdir -p "$APP_BUNDLE/Contents/MacOS"
+mkdir -p "$APP_BUNDLE/Contents/Resources"
+
+# Executable
+cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+
+# Info.plist
+cp "Lio/Shared/Resources/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
+
+# PkgInfo
+echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
+
+# ── API key ──────────────────────────────────────────────────────────────────
+# Looks for .env in the repo root (where you run swift run from).
+# Copy it next to the executable so AnthropicClient finds it on startup.
+ENV_SOURCE="$SCRIPT_DIR/.env"
+if [ -f "$ENV_SOURCE" ]; then
+    cp "$ENV_SOURCE" "$APP_BUNDLE/Contents/MacOS/.env"
+    echo "  ✓ Embedded .env (API key bundled)"
+else
+    echo "  ⚠ No .env found at $ENV_SOURCE — testers will be prompted for their key"
+fi
+
+# ── App icon ─────────────────────────────────────────────────────────────────
+PNG_SRC="Lio/Shared/Resources/Lio.png"
+if [ -f "$PNG_SRC" ]; then
+    ICONSET=$(mktemp -d)/AppIcon.iconset
+    mkdir -p "$ICONSET"
+    for size in 16 32 64 128 256 512; do
+        sips -z $size $size "$PNG_SRC" --out "$ICONSET/icon_${size}x${size}.png"     > /dev/null 2>&1
+        double=$((size * 2))
+        sips -z $double $double "$PNG_SRC" --out "$ICONSET/icon_${size}x${size}@2x.png" > /dev/null 2>&1
+    done
+    iconutil -c icns "$ICONSET" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+    rm -rf "$(dirname "$ICONSET")"
+    echo "  ✓ Generated AppIcon.icns from Lio.png"
+else
+    echo "  ⚠ No Lio.png found — app will have no Dock icon"
+fi
+
+# ── Resource bundle (contains Lio.svg) ───────────────────────────────────────
+if [ -d "$RESOURCE_BUNDLE" ]; then
+    cp -r "$RESOURCE_BUNDLE" "$APP_BUNDLE/Contents/Resources/"
+    echo "  ✓ Copied resource bundle"
+else
+    cp "Lio/Shared/Resources/Lio.svg" "$APP_BUNDLE/Contents/Resources/Lio.svg"
+    echo "  ✓ Copied Lio.svg directly"
+fi
 
 echo ""
-echo "✓ Built: ${APP}"
-echo "  Run: open '${APP}'"
+echo "✓ Done: $APP_BUNDLE"
 echo ""
-echo "  If this is the first run after changing the build:"
-echo "  1. Open: System Settings → Privacy & Security → Accessibility"
-echo "  2. Remove any old Whisk entry, then add ${APP}"
-echo "  3. Re-open Whisk.app"
+echo "To distribute:"
+echo "  zip -r Lio.zip Lio.app && open ."
+echo ""
+echo "Testers: right-click → Open on first launch to bypass Gatekeeper"
