@@ -66,9 +66,9 @@ using the provided tools. After each action you receive a fresh screenshot — c
 until the task is COMPLETED.
 
 ## Coordinate system
-- The screenshot has its origin at the TOP-LEFT corner.
-- x increases rightward, y increases downward.
-- Coordinates are in the pixel space of the image you see (not retina pixels — use what you observe).
+- The screenshot dimensions (in pixels) are stated in the message alongside each image — use those exact dimensions as your coordinate space.
+- Origin (0, 0) is the TOP-LEFT corner of the image. x increases rightward, y increases downward.
+- Output coordinates as integer pixels within the stated image bounds.
 - Always derive coordinates from the visible screenshot. Do not guess.
 
 ## Tools

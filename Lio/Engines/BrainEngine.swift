@@ -46,10 +46,11 @@ final class BrainEngine {
         var capture = initialCapture
 
         // Build initial message: screenshot + user instruction
+        let imgDims = "\(Int(capture.apiImageSize.width))×\(Int(capture.apiImageSize.height)) px"
         var messages: [Message] = [
             .user([
                 .image(mediaType: "image/jpeg", base64: capture.base64JPEG),
-                .text(instruction)
+                .text("Screenshot (\(imgDims), origin top-left, x rightward, y downward).\n\n\(instruction)")
             ])
         ]
 
@@ -150,9 +151,10 @@ final class BrainEngine {
             if hasToolUse {
                 // One "tool" message per call, then updated screenshot as next user turn
                 messages.append(contentsOf: toolResultMessages)
+                let updDims = "\(Int(capture.apiImageSize.width))×\(Int(capture.apiImageSize.height)) px"
                 messages.append(.user([
                     .image(mediaType: "image/jpeg", base64: capture.base64JPEG),
-                    .text("Updated screenshot after action.")
+                    .text("Updated screenshot after action (\(updDims), origin top-left).")
                 ]))
             }
 
