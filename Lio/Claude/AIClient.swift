@@ -1,21 +1,21 @@
 import Foundation
 
-enum AnthropicError: Error, LocalizedError {
+enum AIClientError: Error, LocalizedError {
     case missingAPIKey
     case httpError(Int, String)
     case decodingError(Error)
 
     var errorDescription: String? {
         switch self {
-        case .missingAPIKey:          return "ANTHROPIC_API_KEY not set in environment"
+        case .missingAPIKey:          return "OPENROUTER_API_KEY not set in .env"
         case .httpError(let c, let m): return "HTTP \(c): \(m)"
         case .decodingError(let e):   return "Decode error: \(e)"
         }
     }
 }
 
-final class AnthropicClient {
-    private let baseURL = URL(string: "https://api.anthropic.com/v1/messages")!
+final class AIClient {
+    private let baseURL = URL(string: "https://openrouter.ai/api/v1/chat/completions")!
 
     private static func loadDotEnv() -> [String: String] {
         func ancestors(of path: String) -> [String] {
@@ -68,19 +68,25 @@ final class AnthropicClient {
         return vars
     }
 
+    static func resolveModel() -> String {
+        let env = loadDotEnv()
+        return env["OPENROUTER_MODEL"]
+            ?? ProcessInfo.processInfo.environment["OPENROUTER_MODEL"]
+            ?? "anthropic/claude-sonnet-4-6"
+    }
+
     func send(_ request: MessagesRequest) async throws -> MessagesResponse {
         let dotEnv = Self.loadDotEnv()
-        let apiKey = dotEnv["ANTHROPIC_API_KEY"]
-            ?? ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"]
+        let apiKey = dotEnv["OPENROUTER_API_KEY"]
+            ?? ProcessInfo.processInfo.environment["OPENROUTER_API_KEY"]
             ?? ""
         guard !apiKey.isEmpty else {
-            throw AnthropicError.missingAPIKey
+            throw AIClientError.missingAPIKey
         }
 
         var req = URLRequest(url: baseURL)
         req.httpMethod = "POST"
-        req.setValue(apiKey,        forHTTPHeaderField: "x-api-key")
-        req.setValue("2023-06-01",  forHTTPHeaderField: "anthropic-version")
+        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "content-type")
 
         let enc = JSONEncoder()
@@ -95,7 +101,7 @@ final class AnthropicClient {
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
             let body = String(data: data, encoding: .utf8) ?? ""
             print("[Lio] HTTP \(http.statusCode): \(body)")
-            throw AnthropicError.httpError(http.statusCode, body)
+            throw AIClientError.httpError(http.statusCode, body)
         }
 
         let dec = JSONDecoder()
@@ -103,7 +109,7 @@ final class AnthropicClient {
         do {
             return try dec.decode(MessagesResponse.self, from: data)
         } catch {
-            throw AnthropicError.decodingError(error)
+            throw AIClientError.decodingError(error)
         }
     }
 }
