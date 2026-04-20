@@ -4,13 +4,13 @@ import Foundation
 /// Drives the Lio agentic loop: screenshot → Claude (multimodal) → action → repeat.
 @MainActor
 final class BrainEngine {
-    private let client  = AnthropicClient()
+    private let client  = AIClient()
     private let screen  = ScreenEngine()
     private let mouse   = MouseSimulator()
     private let cursor: CursorOverlayWindow
     private let state:  AppState
 
-    private let model     = "claude-sonnet-4-6"
+    private let model     = AIClient.resolveModel()
     private let maxTokens = 4096
     private let maxIter   = 25
 
@@ -47,10 +47,10 @@ final class BrainEngine {
 
         // Build initial message: screenshot + user instruction
         var messages: [Message] = [
-            Message(role: "user", content: .blocks([
-                .image(ImageBlock(source: ImageSource(mediaType: "image/jpeg", data: capture.base64JPEG))),
-                .text(TextBlock(text: instruction))
-            ]))
+            .user([
+                .image(mediaType: "image/jpeg", base64: capture.base64JPEG),
+                .text(instruction)
+            ])
         ]
 
         var steps: [StepItem] = []
@@ -85,38 +85,34 @@ final class BrainEngine {
                 return
             }
 
-            var assistantBlocks: [ContentBlock] = []
-            var toolResultBlocks: [ContentBlock] = []
+            var assistantText: String? = nil
+            var assistantToolCalls: [AssistantToolCall] = []
+            var toolResultMessages: [Message] = []
             var hasToolUse = false
-            // Capture Claude's natural-language description that precedes a tool call
             var pendingLabel: String? = nil
 
             for block in response.content {
                 switch block {
                 case .text(let t):
-                    assistantBlocks.append(.text(TextBlock(text: t)))
-                    // Keep as label candidate for the next tool call in this response
-                    pendingLabel = t.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if response.stopReason == "end_turn" {
+                    assistantText = t
+                    pendingLabel  = t.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if response.stopReason == "stop" {
                         state.phase = .progress(steps: steps, completedCount: completedCount, summary: t)
                     }
 
                 case .toolUse(let id, let name, let input):
                     hasToolUse = true
-                    assistantBlocks.append(.toolUse(ToolUseBlock(id: id, name: name, input: input)))
 
-                    // Stall detection — if Claude repeats the exact same action, warn it
+                    // Stall detection
                     let signature = toolSignature(name: name, input: input)
                     let isStalled = signature == lastToolSignature
                     lastToolSignature = signature
 
-                    // Use Claude's description if provided, otherwise fall back to computed label
                     let label = pendingLabel ?? toolLabel(name: name, input: input)
                     pendingLabel = nil
                     steps.append(StepItem(text: label, completed: false))
                     state.phase = .progress(steps: steps, completedCount: completedCount, summary: "")
 
-                    // Execute the action
                     var result = await executeTool(name: name, input: input, capture: capture)
 
                     if isStalled {
@@ -124,37 +120,43 @@ final class BrainEngine {
                         NSLog("[BrainEngine] Stall detected for: \(signature)")
                     }
 
-                    // Mark step complete
                     if let idx = steps.indices.last {
                         steps[idx] = StepItem(text: label, completed: true)
                         completedCount += 1
                     }
                     state.phase = .progress(steps: steps, completedCount: completedCount, summary: "")
 
-                    // Wait for UI to settle — longer after shortcuts/commands that open windows
                     let waitMs: UInt64 = (name == "run_command" || name == "press_shortcut") ? 900 : 400
                     try? await Task.sleep(for: .milliseconds(waitMs))
                     if let newCapture = try? await screen.captureWindow() {
                         capture = newCapture
                     }
 
-                    // Tool result + new screenshot as next user turn
-                    toolResultBlocks.append(.toolResult(ToolResultBlock(toolUseId: id, content: result)))
-                    toolResultBlocks.append(.image(ImageBlock(source: ImageSource(mediaType: "image/jpeg", data: capture.base64JPEG))))
-                    toolResultBlocks.append(.text(TextBlock(text: "Updated screenshot after action.")))
+                    // Serialize input back to JSON string for the assistant tool_calls message
+                    let argStr = (try? String(data: JSONEncoder().encode(input), encoding: .utf8)) ?? "{}"
+                    assistantToolCalls.append(AssistantToolCall(id: id, name: name, arguments: argStr))
+
+                    // Tool result as a standalone "tool" role message
+                    toolResultMessages.append(.tool(callId: id, content: result))
 
                 case .unknown:
                     break
                 }
             }
 
-            messages.append(Message(role: "assistant", content: .blocks(assistantBlocks)))
+            // Assistant message (text and/or tool calls)
+            messages.append(.assistant(text: assistantText, toolCalls: assistantToolCalls))
 
-            if hasToolUse && !toolResultBlocks.isEmpty {
-                messages.append(Message(role: "user", content: .blocks(toolResultBlocks)))
+            if hasToolUse {
+                // One "tool" message per call, then updated screenshot as next user turn
+                messages.append(contentsOf: toolResultMessages)
+                messages.append(.user([
+                    .image(mediaType: "image/jpeg", base64: capture.base64JPEG),
+                    .text("Updated screenshot after action.")
+                ]))
             }
 
-            if !hasToolUse || response.stopReason == "end_turn" {
+            if !hasToolUse || response.stopReason == "stop" {
                 break
             }
         }
