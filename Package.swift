@@ -13,7 +13,10 @@ let package = Package(
                 "Shared/Resources/Lio.entitlements",
             ],
             resources: [
-                .process("Shared/Resources/Lio.svg")
+                .process("Shared/Resources/Lio.svg"),
+                .process("Shared/Resources/cursor.svg"),
+                .process("Shared/Resources/cursor2.svg"),
+                .process("Shared/Resources/LioMenu.svg"),
             ],
             swiftSettings: [
                 .unsafeFlags(["-parse-as-library"])

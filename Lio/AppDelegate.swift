@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var isPanelVisible = false
     private var cancellables   = Set<AnyCancellable>()
+    private var brainTask: Task<Void, Never>?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("[AppDelegate] applicationDidFinishLaunching")
@@ -23,6 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         brain = BrainEngine(state: state, cursor: cursor)
         panel = LioPanelController(state: state)
+
+        state.cancelHandler = { [weak self] in
+            Task { @MainActor in self?.cancelBrain() }
+        }
 
         setupStatusItem()
         observePhase()
@@ -146,7 +151,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         guard let button = statusItem?.button else { return }
 
-        if let img = whiskLogoNSImage(size: 18) {
+        if let img = lioMenuNSImage(size: 18) {
+            img.isTemplate = true
+            button.image = img
+        } else if let img = whiskLogoNSImage(size: 18) {
             img.isTemplate = true
             button.image = img
         } else {
@@ -206,12 +214,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Recording flow
 
+    private func cancelBrain() {
+        brainTask?.cancel()
+        brainTask = nil
+        state.phase = .idle
+    }
+
     private func startRecording() async {
         NSLog("[AppDelegate] startRecording — phase=\(state.phase) visible=\(isPanelVisible)")
 
         // Right Option during a confirmation card = Accept
         if case .permission = state.phase {
             state.permissionHandlers?.accept()
+            return
+        }
+
+        // Right Option again during active work = Cancel
+        if state.phase.isCancellable {
+            cancelBrain()
             return
         }
 
@@ -260,7 +280,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         state.phase = .transcript(text: text)
         try? await Task.sleep(for: .milliseconds(1000))
-        await brain.run(instruction: text)
+        brainTask = Task { @MainActor in
+            await self.brain.run(instruction: text)
+            self.brainTask = nil
+        }
     }
 
     // MARK: - Permissions

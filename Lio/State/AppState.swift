@@ -28,6 +28,13 @@ enum AppPhase: Equatable {
         }
     }
 
+    var isCancellable: Bool {
+        switch self {
+        case .action, .progress: return true
+        default: return false
+        }
+    }
+
     var cornerRadius: CGFloat { isPill ? 24 : 24 }
 }
 
@@ -41,6 +48,9 @@ final class AppState: ObservableObject {
 
     // Callbacks for the permission card buttons (set before transitioning to .permission phase)
     var permissionHandlers: (accept: () -> Void, deny: () -> Void)?
+
+    // Called when the user requests to cancel the current operation
+    var cancelHandler: (() -> Void)?
 
     // Convenience setters called by engines
     func set(_ phase: AppPhase) { self.phase = phase }
