@@ -10,7 +10,7 @@ final class BrainEngine {
     private let cursor: CursorOverlayWindow
     private let state:  AppState
 
-    private let model     = "claude-opus-4-6"
+    private let model     = "claude-sonnet-4-6"
     private let maxTokens = 4096
     private let maxIter   = 25
 
@@ -70,19 +70,33 @@ final class BrainEngine {
                 response = try await client.send(req)
             } catch {
                 cursor.hide()
-                state.phase = .error(message: error.localizedDescription)
-                scheduleReset()
+                if error is CancellationError {
+                    state.phase = .idle
+                } else {
+                    state.phase = .error(message: error.localizedDescription)
+                    scheduleReset()
+                }
+                return
+            }
+
+            guard !Task.isCancelled else {
+                cursor.hide()
+                state.phase = .idle
                 return
             }
 
             var assistantBlocks: [ContentBlock] = []
             var toolResultBlocks: [ContentBlock] = []
             var hasToolUse = false
+            // Capture Claude's natural-language description that precedes a tool call
+            var pendingLabel: String? = nil
 
             for block in response.content {
                 switch block {
                 case .text(let t):
                     assistantBlocks.append(.text(TextBlock(text: t)))
+                    // Keep as label candidate for the next tool call in this response
+                    pendingLabel = t.trimmingCharacters(in: .whitespacesAndNewlines)
                     if response.stopReason == "end_turn" {
                         state.phase = .progress(steps: steps, completedCount: completedCount, summary: t)
                     }
@@ -96,7 +110,9 @@ final class BrainEngine {
                     let isStalled = signature == lastToolSignature
                     lastToolSignature = signature
 
-                    let label = toolLabel(name: name, input: input)
+                    // Use Claude's description if provided, otherwise fall back to computed label
+                    let label = pendingLabel ?? toolLabel(name: name, input: input)
+                    pendingLabel = nil
                     steps.append(StepItem(text: label, completed: false))
                     state.phase = .progress(steps: steps, completedCount: completedCount, summary: "")
 
@@ -175,6 +191,7 @@ final class BrainEngine {
                 cursor.animateTo(screenPoint: appKitPt) { cont.resume() }
             }
             await mouse.click(at: quartzPt)
+            cursor.animateClick()
             return "Clicked at (\(Int(quartzPt.x)), \(Int(quartzPt.y)))"
 
         case "type":

@@ -19,7 +19,7 @@ struct ProgressCardView: View {
                 }
             }
             .padding(.top, 10)
-            .padding(.bottom, summary.isEmpty ? 10 : 4)
+            .padding(.bottom, summary.isEmpty ? 42 : 4)
 
             if !summary.isEmpty {
                 CardDivider()
@@ -32,7 +32,8 @@ struct ProgressCardView: View {
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 14)
+                .padding(.top, 14)
+                .padding(.bottom, 42)
             }
         }
         .frame(width: PANEL_W)

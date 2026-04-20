@@ -37,6 +37,23 @@ func whiskLogoNSImage(size: CGFloat = 18) -> NSImage? {
     return nil
 }
 
+/// Generic SVG loader — searches Bundle.main then Lio_Lio.bundle.
+private func loadSVG(name: String, size: CGFloat) -> NSImage? {
+    for bundle in [Bundle.main, Bundle.main.resourceURL
+        .flatMap { Bundle(url: $0.appendingPathComponent("Lio_Lio.bundle")) }]
+        .compactMap({ $0 }) {
+        if let url = bundle.url(forResource: name, withExtension: "svg"),
+           let img = NSImage(contentsOf: url) {
+            img.size = NSSize(width: size, height: size)
+            return img
+        }
+    }
+    return nil
+}
+
+func cursorNSImage(size: CGFloat = 32) -> NSImage? { loadSVG(name: "cursor", size: size) }
+func lioMenuNSImage(size: CGFloat = 18) -> NSImage? { loadSVG(name: "LioMenu", size: size) }
+
 /// Loads Lio.svg as a template image (tinted aBlue). Falls back to the ⌥ glyph.
 struct LogoImage: View {
     var size: CGFloat = 18

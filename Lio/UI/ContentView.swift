@@ -26,6 +26,29 @@ struct ContentView: View {
                 )
 
             phaseView
+
+            if state.phase.isCancellable {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button(action: { state.cancelHandler?() }) {
+                            Text("Cancel  ⌥")
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundColor(Color(white: 0.55))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .stroke(Color(white: 0.65).opacity(0.6), lineWidth: 0.75)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 12)
+                        .padding(.bottom, 10)
+                    }
+                }
+            }
         }
         .fixedSize(horizontal: true, vertical: true)
         .background(

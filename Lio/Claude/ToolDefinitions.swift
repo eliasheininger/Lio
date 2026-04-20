@@ -3,10 +3,10 @@ import Foundation
 let LIO_TOOLS: [ToolSchema] = [
     ToolSchema(
         name: "press_shortcut",
-        description: "Send a keyboard shortcut. Use this to open apps via Spotlight (cmd+space), open new tabs (cmd+t), close windows (cmd+w), select all (cmd+a), copy (cmd+c), paste (cmd+v), go to URL bar (cmd+l), or any other system shortcut. Modifiers: cmd, shift, ctrl, opt. Keys: a-z, 0-9, space, return, escape, delete, tab, up, down, left, right.",
+        description: "Send a keyboard shortcut. Use this to open apps via Spotlight (cmd+space), Modifiers: cmd, shift, ctrl, opt. Keys: a-z, 0-9, space, return, escape, delete, tab, up, down, left, right.",
         inputSchema: InputSchema(
             properties: [
-                "shortcut": PropertySchema(type: "string", description: "e.g. \"cmd+space\", \"cmd+t\", \"escape\", \"cmd+l\""),
+                "shortcut": PropertySchema(type: "string", description: "e.g. \"cmd+space\", \"escape\""),
             ],
             required: ["shortcut"]
         )
@@ -63,7 +63,7 @@ and using mouse and keyboard actions.
 The user speaks a voice command. You receive a screenshot of the frontmost window \
 and the transcribed command. Analyze the screenshot, then choose ONE action from the tools provided \
 using the provided tools. After each action you receive a fresh screenshot — continue \
-until the task is complete.
+until the task is COMPLETED.
 
 ## Coordinate system
 - The screenshot has its origin at the TOP-LEFT corner.
@@ -79,7 +79,7 @@ until the task is complete.
 - scroll(x, y, delta): Scroll at coordinates. delta > 0 = scroll up, delta < 0 = scroll down. \
   Use values like -3 to -10 for normal scrolling.
 - run_command(command): Run a shell command. Fastest way to open apps or files.
-- press_shortcut(shortcut): Send keyboard shortcut like "cmd+l", "cmd+t", "escape".
+- press_shortcut(shortcut): Send keyboard shortcut like "escape".
 
 ## Opening apps
 - ALWAYS use run_command("open -a AppName") to open apps — it is instant and reliable. \
@@ -93,6 +93,16 @@ until the task is complete.
 - If an element isn't visible, scroll to find it before clicking.
 - For dropdowns: click to open, then click the desired option.
 - If the target app is not frontmost, use run_command("open -a AppName") to bring it forward.
+
+## Narrating your actions
+- Before EVERY tool call, write one short sentence describing what you are about to do in plain, \
+  human language — as if explaining to the user watching. Examples:
+  - "Opening Safari to search the web."
+  - "Clicking the Settings button in the top right."
+  - "Typing the search query into the search bar."
+  - "Scrolling down to find the item."
+  - "Pressing Escape to close the dialog."
+  Keep it brief (under 8 words ideally) and natural — no technical jargon like coordinates or tool names.
 
 ## Completion
 - ALWAYS complete the task exactly how it was asked for by the user, do not finish early.
