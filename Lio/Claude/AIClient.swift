@@ -18,33 +18,40 @@ final class AIClient {
     private let baseURL = URL(string: "https://openrouter.ai/api/v1/chat/completions")!
 
     private static func loadDotEnv() -> [String: String] {
-        func ancestors(of path: String) -> [String] {
-            var dirs: [String] = []
-            var url = URL(fileURLWithPath: path, isDirectory: true)
-            for _ in 0..<5 {
-                dirs.append(url.path)
-                let parent = url.deletingLastPathComponent()
-                if parent.path == url.path { break }
-                url = parent
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        var candidates: [String] = []
+
+        if Bundle.main.bundlePath.hasSuffix(".app") {
+            // Running as .app — only check inside the bundle (never crosses into
+            // Desktop / Documents, which would trigger macOS privacy prompts).
+            if let execDir = Bundle.main.executableURL?.deletingLastPathComponent().path {
+                candidates.append(execDir)
             }
-            return dirs
+        } else {
+            // Development (swift run) — walk up from CWD and executable to find .env.
+            func ancestors(of path: String) -> [String] {
+                var dirs: [String] = []
+                var url = URL(fileURLWithPath: path, isDirectory: true)
+                for _ in 0..<6 {
+                    dirs.append(url.path)
+                    let parent = url.deletingLastPathComponent()
+                    if parent.path == url.path { break }
+                    url = parent
+                }
+                return dirs
+            }
+            var seen = Set<String>()
+            for root in [FileManager.default.currentDirectoryPath,
+                         Bundle.main.executableURL?.deletingLastPathComponent().path ?? ""]
+            where !root.isEmpty {
+                for dir in ancestors(of: root) {
+                    if seen.insert(dir).inserted { candidates.append(dir) }
+                }
+            }
         }
 
-        var seen = Set<String>()
-        var candidates: [String] = []
-        let roots = [
-            FileManager.default.currentDirectoryPath,
-            Bundle.main.executableURL?.deletingLastPathComponent().path ?? ""
-        ]
-        for root in roots where !root.isEmpty {
-            for dir in ancestors(of: root) {
-                if seen.insert(dir).inserted { candidates.append(dir) }
-            }
-        }
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        if seen.insert(home + "/.config/whisk").inserted {
-            candidates.append(home + "/.config/whisk")
-        }
+        // Always check a stable user config location.
+        candidates.append(home + "/.config/Lio")
 
         var vars: [String: String] = [:]
         for dir in candidates {
@@ -77,9 +84,11 @@ final class AIClient {
 
     func send(_ request: MessagesRequest) async throws -> MessagesResponse {
         let dotEnv = Self.loadDotEnv()
-        let apiKey = dotEnv["OPENROUTER_API_KEY"]
+        let udKey = UserDefaults.standard.string(forKey: "openrouter_api_key")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let apiKey = !udKey.isEmpty ? udKey
+            : (dotEnv["OPENROUTER_API_KEY"]
             ?? ProcessInfo.processInfo.environment["OPENROUTER_API_KEY"]
-            ?? ""
+            ?? "")
         guard !apiKey.isEmpty else {
             throw AIClientError.missingAPIKey
         }

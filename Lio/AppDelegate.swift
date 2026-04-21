@@ -17,6 +17,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isPanelVisible = false
     private var cancellables   = Set<AnyCancellable>()
     private var brainTask: Task<Void, Never>?
+    private var onboardingController: OnboardingWindowController?
+    private var settingsController: APIKeySettingsWindowController?
+    private var permissionPoller: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("[AppDelegate] applicationDidFinishLaunching")
@@ -30,9 +33,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         setupStatusItem()
+
+        if needsOnboarding() {
+            showOnboarding()
+        } else {
+            finishSetup()
+        }
+    }
+
+    private func needsOnboarding() -> Bool {
+        let key = UserDefaults.standard.string(forKey: "openrouter_api_key") ?? ""
+        return key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func showOnboarding() {
+        let controller = OnboardingWindowController(onComplete: { [weak self] in
+            self?.onboardingController?.window?.close()
+            self?.onboardingController = nil
+            // Relaunch so all permissions are in effect from the start of a fresh session.
+            // This is the most reliable way to ensure NSEvent.addGlobalMonitorForEvents
+            // picks up Accessibility / Input Monitoring granted during onboarding.
+            DispatchQueue.main.async { self?.relaunch() }
+        })
+        onboardingController = controller
+        controller.show()
+    }
+
+    private func finishSetup() {
         observePhase()
-        requestMicrophoneAccess()
-        checkAndRequestScreenRecording()
 
         hotkey.onKeyDown = { [weak self] in
             NSLog("[AppDelegate] onKeyDown fired")
@@ -52,7 +80,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             Task { @MainActor in self.showInputMonitoringPermission() }
         }
-
         NSLog("[AppDelegate] calling hotkey.start()")
         hotkey.start()
     }
@@ -78,14 +105,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showScreenRecordingPermission() {
         state.permissionHandlers = (
             accept: { [weak self] in
-                let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!
-                NSWorkspace.shared.open(url)
+                // Open Settings so user can enable, then relaunch
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
                 Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(400))
-                    self?.state.phase = .idle
+                    self?.relaunch()
                 }
             },
             deny: { [weak self] in
+                self?.stopPermissionPoller()
                 Task { @MainActor in self?.state.phase = .idle }
             }
         )
@@ -93,10 +121,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         isPanelVisible = true
         state.phase = .permission(
             app: "Screen Recording",
-            message: "Lio needs Screen Recording to see your screen.\n\nOpen Settings → Privacy & Security → Screen Recording, enable Lio, then relaunch.",
-            acceptLabel: "Open Settings",
+            message: "Lio needs Screen Recording to see your screen.\n\nEnable Lio in Settings → Privacy & Security → Screen Recording, then relaunch.",
+            acceptLabel: "Open Settings & Restart",
             denyLabel: "Not now"
         )
+
+        // Also poll — if already granted (e.g. just enabled), auto-dismiss without restart
+        stopPermissionPoller()
+        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] t in
+            guard let self else { t.invalidate(); return }
+            if CGPreflightScreenCaptureAccess() {
+                t.invalidate()
+                self.permissionPoller = nil
+                Task { @MainActor in self.state.phase = .idle }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        permissionPoller = timer
+    }
+
+    private func stopPermissionPoller() {
+        permissionPoller?.invalidate()
+        permissionPoller = nil
+    }
+
+    private func relaunch() {
+        guard let bundleURL = Bundle.main.bundleURL.absoluteURL as URL? else { return }
+        let config = NSWorkspace.OpenConfiguration()
+        config.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: bundleURL, configuration: config) { _, _ in }
+        NSApp.terminate(nil)
     }
 
     // MARK: - Accessibility / Input Monitoring Permissions
@@ -170,6 +224,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let event = NSApp.currentEvent else { return }
         if event.type == .rightMouseUp {
             let menu = NSMenu()
+            menu.addItem(withTitle: "API Key…",
+                         action: #selector(showAPIKeySettings),
+                         keyEquivalent: "")
+            menu.addItem(.separator())
             menu.addItem(withTitle: "Quit Lio",
                          action: #selector(NSApplication.terminate(_:)),
                          keyEquivalent: "q")
@@ -179,6 +237,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             togglePanel()
         }
+    }
+
+    @objc private func showAPIKeySettings() {
+        if settingsController == nil {
+            settingsController = APIKeySettingsWindowController(onDismiss: { [weak self] in
+                self?.settingsController?.window?.close()
+                self?.settingsController = nil
+            })
+        }
+        settingsController?.show()
     }
 
     private func togglePanel() {
@@ -240,6 +308,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             isPanelVisible = true
         }
         guard state.phase == .idle else { return }
+
+        // Request mic on first use (system dialog, one-time)
+        let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        if micStatus == .notDetermined {
+            await AVCaptureDevice.requestAccess(for: .audio)
+        }
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
+            state.phase = .error(message: "Microphone access is required. Enable it in Settings → Privacy & Security → Microphone.")
+            try? await Task.sleep(for: .seconds(3))
+            state.phase = .idle
+            return
+        }
+
+        // Screen recording — just check, don't re-request (onboarding handles the dialog).
+        // If not granted, guide the user to Settings + restart.
+        if #available(macOS 14.2, *), !CGPreflightScreenCaptureAccess() {
+            showScreenRecordingPermission()
+            return
+        }
+
         state.phase = .recording
         audio.onLevelUpdate = { [weak self] level in
             Task { @MainActor in self?.state.audioLevel = level }
