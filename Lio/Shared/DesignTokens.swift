@@ -54,11 +54,11 @@ private func loadSVG(name: String, size: CGFloat) -> NSImage? {
 func cursorNSImage(size: CGFloat = 32) -> NSImage? { loadSVG(name: "cursor", size: size) }
 func lioMenuNSImage(size: CGFloat = 18) -> NSImage? { loadSVG(name: "LioMenu", size: size) }
 
-/// Loads Lio.svg as a template image (tinted aBlue). Falls back to the ⌥ glyph.
+/// LioMenu.svg rendered as a template image in aBlue. Falls back to the ⌥ glyph.
 struct LogoImage: View {
     var size: CGFloat = 18
     var body: some View {
-        if let img = whiskLogoNSImage(size: size) {
+        if let img = lioMenuNSImage(size: size) {
             Image(nsImage: img)
                 .renderingMode(.template)
                 .resizable()

@@ -48,7 +48,8 @@ private struct StepRow: View {
     private let iconSize:  CGFloat = 11
     private let rowHeight: CGFloat = 38
     private let lineWidth: CGFloat = 1
-    private let iconColor  = Color(white: 0.72)
+    // Adaptive — white on dark surfaces, dark on light surfaces
+    private let stepColor  = Color.primary.opacity(0.80)
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -57,13 +58,13 @@ private struct StepRow: View {
             VStack(spacing: 0) {
                 ZStack {
                     Circle()
-                        .strokeBorder(iconColor, lineWidth: lineWidth)
+                        .strokeBorder(stepColor, lineWidth: lineWidth)
                         .frame(width: dotSize, height: dotSize)
 
                     if step.completed {
                         Image(systemName: actionIconName(for: step.text))
                             .font(.system(size: iconSize, weight: .semibold))
-                            .foregroundColor(iconColor)
+                            .foregroundColor(stepColor)
                     } else {
                         ProgressView()
                             .scaleEffect(0.45)
@@ -74,7 +75,7 @@ private struct StepRow: View {
 
                 if !isLast {
                     Rectangle()
-                        .fill(Color(white: 0.78))
+                        .fill(Color.primary.opacity(0.20))
                         .frame(width: lineWidth, height: rowHeight - dotSize)
                 }
             }
@@ -83,7 +84,7 @@ private struct StepRow: View {
             // ── Label ────────────────────────────────────────────
             Text(step.text)
                 .font(.system(size: 12.5))
-                .foregroundColor(step.completed ? Color(white: 0.52) : Color(white: 0.08))
+                .foregroundColor(stepColor)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: dotSize)
