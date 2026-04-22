@@ -43,7 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func needsOnboarding() -> Bool {
         let key = UserDefaults.standard.string(forKey: "openrouter_api_key") ?? ""
-        return key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
+        if !AXIsProcessTrusted() { return true }
+        if AVCaptureDevice.authorizationStatus(for: .audio) != .authorized { return true }
+        if #available(macOS 14.2, *), !CGPreflightScreenCaptureAccess() { return true }
+        return false
     }
 
     private func showOnboarding() {
@@ -70,74 +74,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSLog("[AppDelegate] onKeyUp fired")
             Task { @MainActor in await self?.stopRecording() }
         }
-        hotkey.onPermissionNeeded = { [weak self] in
-            NSLog("[AppDelegate] onPermissionNeeded — showing Accessibility card")
-            guard let self else { return }
-            Task { @MainActor in self.showAccessibilityPermission() }
-        }
-        hotkey.onTapFailed = { [weak self] in
-            NSLog("[AppDelegate] onTapFailed — showing Input Monitoring card")
-            guard let self else { return }
-            Task { @MainActor in self.showInputMonitoringPermission() }
+        hotkey.onTapFailed = {
+            NSLog("[AppDelegate] onTapFailed — opening Input Monitoring settings")
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
         }
         NSLog("[AppDelegate] calling hotkey.start()")
         hotkey.start()
-    }
-
-    // MARK: - Screen Recording
-
-    private func checkAndRequestScreenRecording() {
-        if #available(macOS 14.2, *) {
-            if !CGPreflightScreenCaptureAccess() {
-                CGRequestScreenCaptureAccess()
-                // Show the panel with a brief instruction after the system prompt
-                Task {
-                    try? await Task.sleep(for: .milliseconds(800))
-                    if !CGPreflightScreenCaptureAccess() {
-                        showScreenRecordingPermission()
-                    }
-                }
-            }
-        }
-        // On macOS 13 the prompt fires on first capture attempt
-    }
-
-    private func showScreenRecordingPermission() {
-        state.permissionHandlers = (
-            accept: { [weak self] in
-                // Open Settings so user can enable, then relaunch
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(400))
-                    self?.relaunch()
-                }
-            },
-            deny: { [weak self] in
-                self?.stopPermissionPoller()
-                Task { @MainActor in self?.state.phase = .idle }
-            }
-        )
-        panel.show()
-        isPanelVisible = true
-        state.phase = .permission(
-            app: "Screen Recording",
-            message: "Lio needs Screen Recording to see your screen.\n\nEnable Lio in Settings → Privacy & Security → Screen Recording, then relaunch.",
-            acceptLabel: "Open Settings & Restart",
-            denyLabel: "Not now"
-        )
-
-        // Also poll — if already granted (e.g. just enabled), auto-dismiss without restart
-        stopPermissionPoller()
-        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] t in
-            guard let self else { t.invalidate(); return }
-            if CGPreflightScreenCaptureAccess() {
-                t.invalidate()
-                self.permissionPoller = nil
-                Task { @MainActor in self.state.phase = .idle }
-            }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        permissionPoller = timer
     }
 
     private func stopPermissionPoller() {
@@ -146,57 +88,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func relaunch() {
-        guard let bundleURL = Bundle.main.bundleURL.absoluteURL as URL? else { return }
-        let config = NSWorkspace.OpenConfiguration()
-        config.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: bundleURL, configuration: config) { _, _ in }
+        let bundlePath = Bundle.main.bundlePath
+        let task = Process()
+        task.launchPath = "/bin/sh"
+        task.arguments = ["-c", "sleep 0.5 && open '\(bundlePath)'"]
+        try? task.run()
         NSApp.terminate(nil)
-    }
-
-    // MARK: - Accessibility / Input Monitoring Permissions
-
-    private func showInputMonitoringPermission() {
-        state.permissionHandlers = (
-            accept: { [weak self] in
-                let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!
-                NSWorkspace.shared.open(url)
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(400))
-                    self?.state.phase = .idle
-                }
-            },
-            deny: { [weak self] in
-                Task { @MainActor in self?.state.phase = .idle }
-            }
-        )
-        panel.show()
-        isPanelVisible = true
-        state.phase = .permission(
-            app: "Input Monitoring",
-            message: "Lio needs Input Monitoring permission to detect the Option key.\n\nOpen Settings → Privacy & Security → Input Monitoring, enable Lio, then relaunch."
-        )
-    }
-
-    private func showAccessibilityPermission() {
-        state.permissionHandlers = (
-            accept: { [weak self] in
-                let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
-                NSWorkspace.shared.open(url)
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(400))
-                    self?.state.phase = .idle
-                }
-            },
-            deny: { [weak self] in
-                Task { @MainActor in self?.state.phase = .idle }
-            }
-        )
-        panel.show()
-        isPanelVisible = true
-        state.phase = .permission(
-            app: "Accessibility",
-            message: "Lio needs Accessibility permission to detect the Option key.\n\nOpen Settings → Privacy & Security → Accessibility, enable Lio, then relaunch."
-        )
     }
 
     // MARK: - Status Item
@@ -321,10 +218,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Screen recording — just check, don't re-request (onboarding handles the dialog).
-        // If not granted, guide the user to Settings + restart.
+        // Screen recording — silently skip if not granted; onboarding handles setup.
         if #available(macOS 14.2, *), !CGPreflightScreenCaptureAccess() {
-            showScreenRecordingPermission()
+            panel.hide()
+            isPanelVisible = false
+            state.phase = .idle
             return
         }
 

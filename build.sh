@@ -27,19 +27,8 @@ cp "Lio/Shared/Resources/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 # PkgInfo
 echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 
-# ── API key ──────────────────────────────────────────────────────────────────
-# Looks for .env in the repo root (where you run swift run from).
-# Copy it next to the executable so AnthropicClient finds it on startup.
-ENV_SOURCE="$SCRIPT_DIR/.env"
-if [ -f "$ENV_SOURCE" ]; then
-    cp "$ENV_SOURCE" "$APP_BUNDLE/Contents/MacOS/.env"
-    echo "  ✓ Embedded .env (API key bundled)"
-else
-    echo "  ⚠ No .env found at $ENV_SOURCE — testers will be prompted for their key"
-fi
-
 # ── App icon ─────────────────────────────────────────────────────────────────
-PNG_SRC="Lio/Shared/Resources/Lio.png"
+PNG_SRC="Lio/Shared/Resources/LioApp.png"
 if [ -f "$PNG_SRC" ]; then
     ICONSET=$(mktemp -d)/AppIcon.iconset
     mkdir -p "$ICONSET"
