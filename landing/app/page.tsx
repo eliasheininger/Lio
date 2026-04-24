@@ -2,9 +2,10 @@
 
 import { useState, useRef } from "react";
 import Image from "next/image";
+import { motion } from "framer-motion";
 
 // Replace with your actual YouTube video ID
-const YOUTUBE_VIDEO_ID = "YOUR_VIDEO_ID_HERE";
+const YOUTUBE_VIDEO_ID = "lfXqRRCTMyA";
 
 export default function Home() {
   const [email, setEmail] = useState("");
@@ -69,13 +70,16 @@ export default function Home() {
               <path d="M5.5 4.5L9.5 7L5.5 9.5V4.5Z" fill="currentColor" />
             </svg>
           </button>
-          <button
+          <motion.button
             onClick={scrollToWaitlist}
-            className="flex items-center justify-center px-5 py-2.5 text-base font-medium text-white transition-opacity hover:opacity-90"
+            className="flex items-center justify-center px-5 py-2.5 text-base font-medium text-white"
             style={{ backgroundColor: "#0300CF", borderRadius: "20px" }}
+            whileHover={{ scale: 1.04, borderRadius: "18px" }}
+            whileTap={{ scale: 0.94, borderRadius: "22px" }}
+            transition={{ type: "spring", stiffness: 400, damping: 15 }}
           >
             Sign Up to Waitlist
-          </button>
+          </motion.button>
         </div>
       </section>
 
@@ -117,14 +121,17 @@ export default function Home() {
               className="w-full px-4 py-3 bg-gray-100 text-base outline-none transition-colors placeholder:text-gray-400"
               style={{ borderRadius: "20px" }}
             />
-            <button
+            <motion.button
               type="submit"
               disabled={status === "loading"}
-              className="w-full py-3 text-white text-base font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
+              className="w-full py-3 text-white text-base font-medium disabled:opacity-60"
               style={{ backgroundColor: "#0300CF", borderRadius: "20px" }}
+              whileHover={{ scale: 1.03, borderRadius: "18px" }}
+              whileTap={{ scale: 0.95, borderRadius: "22px" }}
+              transition={{ type: "spring", stiffness: 400, damping: 15 }}
             >
               {status === "loading" ? "Sending..." : "Send"}
-            </button>
+            </motion.button>
             {status === "error" && (
               <p className="text-sm text-red-500 text-center">Something went wrong — try again.</p>
             )}
