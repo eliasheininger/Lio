@@ -8,17 +8,27 @@ const YOUTUBE_VIDEO_ID = "YOUR_VIDEO_ID_HERE";
 
 export default function Home() {
   const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const waitlistRef = useRef<HTMLDivElement>(null);
 
   function scrollToWaitlist() {
     waitlistRef.current?.scrollIntoView({ behavior: "smooth" });
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // TODO: wire up to backend
-    console.log("Waitlist signup:", email);
-    setEmail("");
+    setStatus("loading");
+    const res = await fetch("/api/waitlist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    if (res.ok) {
+      setStatus("success");
+      setEmail("");
+    } else {
+      setStatus("error");
+    }
   }
 
   return (
@@ -94,24 +104,32 @@ export default function Home() {
           Be one of the first people to try Lio by signing up to the Waitlist :)
         </p>
 
-        <form onSubmit={handleSubmit} className="w-full flex flex-col gap-3">
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="your email"
-            className="w-full px-4 py-3 bg-gray-100 text-base outline-none transition-colors placeholder:text-gray-400"
+        {status === "success" ? (
+          <p className="text-base text-gray-500">You&apos;re on the list — we&apos;ll be in touch!</p>
+        ) : (
+          <form onSubmit={handleSubmit} className="w-full flex flex-col gap-3">
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="your email"
+              className="w-full px-4 py-3 bg-gray-100 text-base outline-none transition-colors placeholder:text-gray-400"
               style={{ borderRadius: "20px" }}
-          />
-          <button
-            type="submit"
-            className="w-full py-3 text-white text-base font-medium transition-opacity hover:opacity-90"
-            style={{ backgroundColor: "#0300CF", borderRadius: "20px" }}
-          >
-            Send
-          </button>
-        </form>
+            />
+            <button
+              type="submit"
+              disabled={status === "loading"}
+              className="w-full py-3 text-white text-base font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
+              style={{ backgroundColor: "#0300CF", borderRadius: "20px" }}
+            >
+              {status === "loading" ? "Sending..." : "Send"}
+            </button>
+            {status === "error" && (
+              <p className="text-sm text-red-500 text-center">Something went wrong — try again.</p>
+            )}
+          </form>
+        )}
       </section>
 
       {/* Footer */}
