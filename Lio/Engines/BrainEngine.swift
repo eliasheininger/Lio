@@ -117,7 +117,7 @@ final class BrainEngine {
                     var result = await executeTool(name: name, input: input, capture: capture)
 
                     if isStalled {
-                        result += "\n\nWARNING: This exact action was already tried and had no visible effect. You MUST try a completely different approach — use run_command, a different coordinate, or a different tool."
+                        result += "\n\nWARNING: This exact action was already tried and had no visible effect. You MUST try a completely different approach — use a different coordinate, scroll to find the element, or use a different tool."
                         NSLog("[BrainEngine] Stall detected for: \(signature)")
                     }
 
@@ -127,7 +127,7 @@ final class BrainEngine {
                     }
                     state.phase = .progress(steps: steps, completedCount: completedCount, summary: "")
 
-                    let waitMs: UInt64 = (name == "run_command" || name == "press_shortcut") ? 900 : 400
+                    let waitMs: UInt64 = (name == "open_app" || name == "press_shortcut") ? 900 : 400
                     try? await Task.sleep(for: .milliseconds(waitMs))
                     if let newCapture = try? await screen.captureWindow() {
                         capture = newCapture
@@ -184,7 +184,7 @@ final class BrainEngine {
             let apiY = (input["y"]?.value as? Double) ?? (input["y"]?.value as? Int).map(Double.init) ?? 0
             // Guard against (0,0) — Claude returns this when confused; clicking there is always wrong
             guard apiX > 1 || apiY > 1 else {
-                return "ERROR: Refused to click at (0,0). The target element is not visible. Use run_command to open the app, or describe what you see."
+                return "ERROR: Refused to click at (0,0). The target element is not visible. Use open_app to open the app, or describe what you see."
             }
             let apiPoint  = CGPoint(x: apiX, y: apiY)
             let quartzPt  = apiToScreen(apiPoint, capture)           // Quartz coords for CGEvent
@@ -220,41 +220,33 @@ final class BrainEngine {
             await mouse.pressShortcut(shortcut)
             return "Pressed \(shortcut)"
 
-        case "run_command":
-            let command = input["command"]?.value as? String ?? ""
-            NSLog("[BrainEngine] run_command: \(command)")
-            let output = await runShellCommand(command)
-            return "Ran: \(command)\nOutput: \(output.isEmpty ? "(none)" : output)"
+        case "open_app":
+            let appName = input["name"]?.value as? String ?? ""
+            NSLog("[BrainEngine] open_app: \(appName)")
+            return openApp(named: appName)
 
         default:
             return "Unknown tool: \(name)"
         }
     }
 
-    private func runShellCommand(_ command: String) async -> String {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/bin/bash")
-                process.arguments = ["-c", command]
-                let pipe = Pipe()
-                let errPipe = Pipe()
-                process.standardOutput = pipe
-                process.standardError = errPipe
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
-                    let out = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    let err = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    let combined = [out, err].filter { !$0.isEmpty }.joined(separator: "\n")
-                    continuation.resume(returning: combined)
-                } catch {
-                    continuation.resume(returning: "Error: \(error.localizedDescription)")
-                }
+    /// Opens a macOS application by name using NSWorkspace — no shell involved.
+    private func openApp(named appName: String) -> String {
+        let fm = FileManager.default
+        let searchPaths = [
+            "/Applications/\(appName).app",
+            "\(NSHomeDirectory())/Applications/\(appName).app",
+            "/System/Applications/\(appName).app",
+            "/System/Applications/Utilities/\(appName).app"
+        ]
+        for path in searchPaths {
+            if fm.fileExists(atPath: path) {
+                let url = URL(fileURLWithPath: path)
+                NSWorkspace.shared.openApplication(at: url, configuration: .init(), completionHandler: nil)
+                return "Opened \(appName)"
             }
         }
+        return "App '\(appName)' not found. It may need a different name."
     }
 
     // MARK: - Coordinate conversion
@@ -314,10 +306,9 @@ final class BrainEngine {
         case "press_shortcut":
             let s = input["shortcut"]?.value as? String ?? ""
             return "Shortcut \(s)"
-        case "run_command":
-            let cmd = input["command"]?.value as? String ?? ""
-            let preview = cmd.count > 30 ? String(cmd.prefix(30)) + "…" : cmd
-            return "Running \(preview)"
+        case "open_app":
+            let appName = input["name"]?.value as? String ?? ""
+            return "Opening \(appName)"
         default:
             return name
         }
