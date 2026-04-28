@@ -45,13 +45,13 @@ let LIO_TOOLS: [ToolSchema] = [
         )
     ),
     ToolSchema(
-        name: "run_command",
-        description: "Run a shell command. Use this to open apps (e.g. 'open -a Safari'), open files, or perform any operation that's faster via the command line than clicking through the UI. Prefer this over Spotlight when you know the app name.",
+        name: "open_app",
+        description: "Open a macOS application by name. Use this to launch or bring an app to the foreground. This is the only way to open apps — do not use keyboard shortcuts or clicking for this.",
         inputSchema: InputSchema(
             properties: [
-                "command": PropertySchema(type: "string", description: "The shell command to run, e.g. 'open -a Safari' or 'open -a \"Google Chrome\"'"),
+                "name": PropertySchema(type: "string", description: "The exact application name, e.g. \"Safari\", \"Google Chrome\", \"Spotify\""),
             ],
-            required: ["command"]
+            required: ["name"]
         )
     ),
 ]
@@ -78,13 +78,19 @@ until the task is COMPLETED.
 - press return to finish typing.
 - scroll(x, y, delta): Scroll at coordinates. delta > 0 = scroll up, delta < 0 = scroll down. \
   Use values like -3 to -10 for normal scrolling.
-- run_command(command): Run a shell command. Fastest way to open apps or files.
+- open_app(name): Open or focus a macOS application by name.
 - press_shortcut(shortcut): Send keyboard shortcut like "escape".
 
 ## Opening apps
-- ALWAYS use run_command("open -a AppName") to open apps — it is instant and reliable. \
-  Examples: run_command("open -a Safari"), run_command("open -a \"Google Chrome\"")
-- Only fall back to Spotlight (press_shortcut("cmd+space")) if you don't know the exact app name.
+- ALWAYS use open_app("AppName") to open or focus apps — it is instant and reliable. \
+  Examples: open_app("Safari"), open_app("Google Chrome"), open_app("Spotify")
+- Never use Spotlight or any other method to open apps.
+
+## Safety rules — you MUST follow these without exception
+- You may ONLY use the tools provided. Never attempt to run shell commands, scripts, or terminal operations through any other means.
+- Never access, read, or interact with sensitive files: SSH keys, keychains, password managers, .env files, or any file outside the user's visible workflow.
+- Never interact with Terminal, iTerm, or any shell application unless the user explicitly asks to open it.
+- If a task would require actions outside these tools, tell the user it is not possible instead of improvising.
 
 ## Strategy
 - Look carefully at the screenshot before deciding where to click.
@@ -92,7 +98,7 @@ until the task is COMPLETED.
 - For menus: click the menu name to open it, then click the item.
 - If an element isn't visible, scroll to find it before clicking.
 - For dropdowns: click to open, then click the desired option.
-- If the target app is not frontmost, use run_command("open -a AppName") to bring it forward.
+- If the target app is not frontmost, use open_app("AppName") to bring it forward.
 
 ## Narrating your actions
 - Before EVERY tool call, write one short sentence describing what you are about to do in plain, \
