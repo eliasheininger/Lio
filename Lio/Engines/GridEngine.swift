@@ -152,17 +152,17 @@ final class GridEngine {
         return ctx.makeImage()
     }
 
-    /// Annotates the capture's screenshot and returns a new base64 JPEG string.
-    /// Uses `capture.cgImage` if available to skip JPEG decode; falls back to decoding `base64JPEG`.
+    /// Annotates the capture's screenshot and returns a new base64 PNG string.
+    /// Uses `capture.cgImage` if available to skip decode; falls back to decoding `base64Image`.
     func annotatedBase64JPEG(capture: CaptureResult, quality: CGFloat = 0.85) -> String? {
         let source: CGImage
         if let img = capture.cgImage {
             source = img
         } else {
-            guard let data = Data(base64Encoded: capture.base64JPEG),
+            guard let data = Data(base64Encoded: capture.base64Image),
                   let provider = CGDataProvider(data: data as CFData),
                   let decoded = CGImage(
-                    jpegDataProviderSource: provider, decode: nil,
+                    pngDataProviderSource: provider, decode: nil,
                     shouldInterpolate: true, intent: .defaultIntent
                   )
             else { return nil }

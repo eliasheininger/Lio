@@ -21,8 +21,8 @@ enum ScreenCaptureError: Error, LocalizedError {
 /// Result of a single screen capture, containing the API-ready JPEG and the
 /// geometry needed to convert image-space coordinates back to screen-space.
 struct CaptureResult {
-    /// Base64-encoded JPEG string (no data URL prefix), ready for the Anthropic API.
-    let base64JPEG: String
+    /// Base64-encoded PNG string (no data URL prefix), ready for the Anthropic API.
+    let base64Image: String
     /// Size of the JPEG image sent to Claude (may be smaller than native due to resizing).
     let apiImageSize: CGSize
     /// Top-left corner of the captured window in macOS bottom-left screen coordinates.
@@ -34,8 +34,16 @@ struct CaptureResult {
     let cgImage: CGImage?
 }
 
-/// Captures the frontmost macOS window as a JPEG suitable for the Claude multimodal API.
+/// Captures the frontmost macOS window as a PNG suitable for the Claude multimodal API.
 /// Requires Screen Recording permission and macOS 14.2+.
+///
+/// Tune CAPTURE_MAX_LONG_SIDE to trade off token cost vs. recognition quality:
+///   1280 — original default, high accuracy, ~700 KB
+///   1024 — good balance, ~450 KB  ← current setting
+///    900 — smaller, still reliable for most UI
+///    720 — minimum recommended; small text may degrade
+private let CAPTURE_MAX_LONG_SIDE = 1024
+
 final class ScreenEngine {
 
     /// Returns true if Screen Recording permission has been granted.
@@ -56,7 +64,8 @@ final class ScreenEngine {
 
     /// Capture the full main display (excluding Lio's own windows) so Claude
     /// can see everything — Dock, menu bar, all open windows.
-    func captureWindow(maxLongSide: Int = 1280, quality: CGFloat = 0.85) async throws -> CaptureResult {
+    func captureWindow() async throws -> CaptureResult {
+        let maxLongSide = CAPTURE_MAX_LONG_SIDE
         guard #available(macOS 14.2, *) else {
             throw ScreenCaptureError.requiresMacOS14
         }
@@ -108,9 +117,10 @@ final class ScreenEngine {
         }
 
         let rep = NSBitmapImageRep(cgImage: resized)
-        guard let jpegData = rep.representation(
-            using: .jpeg, properties: [.compressionFactor: quality]
-        ) else { throw ScreenCaptureError.captureFailure }
+        // PNG is lossless — preserves sharp text and UI edges that JPEG blurs,
+        // which matters more as resolution decreases.
+        guard let pngData = rep.representation(using: .png, properties: [:])
+        else { throw ScreenCaptureError.captureFailure }
 
         // Full display: top-left in Quartz/CGEvent coords = (0, 0) for the primary display.
         // Image Y and Quartz Y both increase downward — no inversion needed.
@@ -118,7 +128,7 @@ final class ScreenEngine {
         let windowSizePoints    = CGSize(width: display.frame.width, height: display.frame.height)
 
         return CaptureResult(
-            base64JPEG: jpegData.base64EncodedString(),
+            base64Image: pngData.base64EncodedString(),
             apiImageSize: CGSize(width: outW, height: outH),
             windowOriginTopLeft: windowOriginTopLeft,
             windowSizePoints: windowSizePoints,
