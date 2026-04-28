@@ -49,7 +49,7 @@ final class BrainEngine {
         let imgDims = "\(Int(capture.apiImageSize.width))×\(Int(capture.apiImageSize.height)) px"
         var messages: [Message] = [
             .user([
-                .image(mediaType: "image/jpeg", base64: capture.base64JPEG),
+                .image(mediaType: "image/png", base64: capture.base64Image),
                 .text("Screenshot (\(imgDims), origin top-left, x rightward, y downward).\n\n\(instruction)")
             ])
         ]
@@ -149,11 +149,13 @@ final class BrainEngine {
             messages.append(.assistant(text: assistantText, toolCalls: assistantToolCalls))
 
             if hasToolUse {
-                // One "tool" message per call, then updated screenshot as next user turn
+                // Append tool results, then strip the previous screenshot from message history
+                // (old screenshots waste tokens — the next screenshot already shows cumulative state)
                 messages.append(contentsOf: toolResultMessages)
+                stripImagesFromHistory(&messages)
                 let updDims = "\(Int(capture.apiImageSize.width))×\(Int(capture.apiImageSize.height)) px"
                 messages.append(.user([
-                    .image(mediaType: "image/jpeg", base64: capture.base64JPEG),
+                    .image(mediaType: "image/png", base64: capture.base64Image),
                     .text("Updated screenshot after action (\(updDims), origin top-left).")
                 ]))
             }
@@ -173,6 +175,18 @@ final class BrainEngine {
         }
         state.phase = .success(message: summary)
         scheduleReset()
+    }
+
+    // MARK: - Message history
+
+    /// Strips image blocks from all user messages in history.
+    /// Old screenshots are useless — the latest one already reflects all prior actions.
+    private func stripImagesFromHistory(_ messages: inout [Message]) {
+        for i in 0..<messages.count {
+            if case .user(let blocks) = messages[i] {
+                messages[i] = .user(blocks.filter { if case .image = $0 { return false }; return true })
+            }
+        }
     }
 
     // MARK: - Tool execution
