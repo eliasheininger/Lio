@@ -46,7 +46,7 @@ export default function Home() {
           style={{ fontSize: "28px", letterSpacing: "-0.06em" }}
         >
           A Voice Assistant that lives directly on your Mac, watches your screen
-          and can execute tasks.{" "}
+          and executes tasks.{" "}
           <span className="text-gray-400">Anywhere.</span>
         </h1>
 
