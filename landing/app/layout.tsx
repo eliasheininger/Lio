@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { PostHogProvider } from "@/lib/posthog";
 import "./globals.css";
 
 const inter = Inter({
@@ -21,7 +22,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} font-inter bg-white text-black antialiased`}>
-        {children}
+        <PostHogProvider>{children}</PostHogProvider>
       </body>
     </html>
   );
