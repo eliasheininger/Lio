@@ -23,6 +23,17 @@ let LIO_TOOLS: [ToolSchema] = [
         )
     ),
     ToolSchema(
+        name: "double_click",
+        description: "Double-click at the given image coordinates. Use this to enter text editing mode in design tools (Figma, Sketch, etc.), open files, or any action that requires a double-click.",
+        inputSchema: InputSchema(
+            properties: [
+                "x": PropertySchema(type: "number", description: "Image x coordinate in pixels (top-left origin)"),
+                "y": PropertySchema(type: "number", description: "Image y coordinate in pixels (top-left origin)"),
+            ],
+            required: ["x", "y"]
+        )
+    ),
+    ToolSchema(
         name: "type",
         description: "Type text using keyboard events. Always click a text field first to focus it, then use type(). Include \\n in the text to press Return.",
         inputSchema: InputSchema(
@@ -94,7 +105,8 @@ until the task is COMPLETED.
 
 ## Strategy
 - Look carefully at the screenshot before deciding where to click.
-- For text input: click the field first, then type.
+- For standard text inputs (search bars, form fields, input boxes): one single click is enough to focus — proceed directly to type() without clicking again.
+- For design tools (Figma, Sketch, etc.): use double_click() once to enter text editing mode on a text element. After double-clicking, the element IS in edit mode — do NOT double-click again. Proceed immediately with cmd+a to select all, then type() to replace the text.
 - For menus: click the menu name to open it, then click the item.
 - If an element isn't visible, scroll to find it before clicking.
 - For dropdowns: click to open, then click the desired option.

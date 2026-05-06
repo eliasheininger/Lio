@@ -18,6 +18,23 @@ final class MouseSimulator {
         up?.post(tap: .cghidEventTap)
     }
 
+    /// Double-click at the given screen point. Used to enter edit mode in design tools like Figma.
+    func doubleClick(at point: CGPoint) async {
+        let src = CGEventSource(stateID: .hidSystemState)
+        for clickCount in 1...2 {
+            let down = CGEvent(mouseEventSource: src, mouseType: .leftMouseDown,
+                               mouseCursorPosition: point, mouseButton: .left)
+            let up   = CGEvent(mouseEventSource: src, mouseType: .leftMouseUp,
+                               mouseCursorPosition: point, mouseButton: .left)
+            down?.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
+            up?.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
+            down?.post(tap: .cghidEventTap)
+            try? await Task.sleep(for: .milliseconds(60))
+            up?.post(tap: .cghidEventTap)
+            try? await Task.sleep(for: .milliseconds(60))
+        }
+    }
+
     /// Scroll at the given screen point. Positive delta scrolls up, negative scrolls down.
     func scroll(at point: CGPoint, delta: Int) async {
         let ticks = Int32(clamping: delta)

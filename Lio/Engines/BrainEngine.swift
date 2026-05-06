@@ -17,6 +17,7 @@ final class BrainEngine {
     /// Signature of the last executed tool call (name + serialized inputs).
     /// Used for stall detection — if Claude repeats the exact same action, we inject a warning.
     private var lastToolSignature: String? = nil
+    private var lastClickPoint: CGPoint? = nil  // API-space coords of last click/double-click
 
     init(state: AppState, cursor: CursorOverlayWindow) {
         self.state  = state
@@ -25,6 +26,7 @@ final class BrainEngine {
 
     func run(instruction: String) async {
         lastToolSignature = nil
+        lastClickPoint = nil
         cursor.show()
 
         // Initial screenshot
@@ -103,11 +105,31 @@ final class BrainEngine {
 
                 case .toolUse(let id, let name, let input):
                     hasToolUse = true
+                    NSLog("[BrainEngine] Claude reasoning: \(assistantText ?? "(none)")")
+                    NSLog("[BrainEngine] Claude tool: \(name) \(input)")
 
                     // Stall detection
                     let signature = toolSignature(name: name, input: input)
-                    let isStalled = signature == lastToolSignature
+                    var isStalled = signature == lastToolSignature
                     lastToolSignature = signature
+
+                    // Proximity stall: clicks/double-clicks within 40px of the last one also count as stalls.
+                    // This catches coordinate drift (api=(449,342) → api=(462,342)) that bypasses exact matching.
+                    if !isStalled, name == "click" || name == "double_click" {
+                        let apiX = (input["x"]?.value as? Double) ?? (input["x"]?.value as? Int).map(Double.init) ?? 0
+                        let apiY = (input["y"]?.value as? Double) ?? (input["y"]?.value as? Int).map(Double.init) ?? 0
+                        let newPt = CGPoint(x: apiX, y: apiY)
+                        if let prev = lastClickPoint {
+                            let dx = newPt.x - prev.x
+                            let dy = newPt.y - prev.y
+                            if (dx * dx + dy * dy) <= 40 * 40 {
+                                isStalled = true
+                            }
+                        }
+                        lastClickPoint = newPt
+                    } else if name != "click" && name != "double_click" {
+                        lastClickPoint = nil
+                    }
 
                     let label = pendingLabel ?? toolLabel(name: name, input: input)
                     pendingLabel = nil
@@ -117,7 +139,13 @@ final class BrainEngine {
                     var result = await executeTool(name: name, input: input, capture: capture)
 
                     if isStalled {
-                        result += "\n\nWARNING: This exact action was already tried and had no visible effect. You MUST try a completely different approach — use a different coordinate, scroll to find the element, or use a different tool."
+                        if name == "click" {
+                            result += "\n\nWARNING: You already clicked near this position. If you were trying to focus a text field, it is very likely already focused — call type() next instead of clicking again. If you were not targeting a text field, try a completely different coordinate or approach."
+                        } else if name == "double_click" {
+                            result += "\n\nWARNING: You already double-clicked near this position. The element is very likely already in edit mode — do NOT double-click again. Proceed with cmd+a to select all text, then type() to replace it."
+                        } else {
+                            result += "\n\nWARNING: This exact action was already tried and had no visible effect. You MUST try a completely different approach — use a different coordinate, scroll to find the element, or use a different tool."
+                        }
                         NSLog("[BrainEngine] Stall detected for: \(signature)")
                     }
 
@@ -131,6 +159,7 @@ final class BrainEngine {
                     try? await Task.sleep(for: .milliseconds(waitMs))
                     if let newCapture = try? await screen.captureWindow() {
                         capture = newCapture
+                        debugSaveScreenshot(capture.base64Image, label: "\(steps.count)_after_\(name)")
                     }
 
                     // Serialize input back to JSON string for the assistant tool_calls message
@@ -212,6 +241,23 @@ final class BrainEngine {
             cursor.animateClick()
             return "Clicked at (\(Int(quartzPt.x)), \(Int(quartzPt.y)))"
 
+        case "double_click":
+            let apiX2 = (input["x"]?.value as? Double) ?? (input["x"]?.value as? Int).map(Double.init) ?? 0
+            let apiY2 = (input["y"]?.value as? Double) ?? (input["y"]?.value as? Int).map(Double.init) ?? 0
+            guard apiX2 > 1 || apiY2 > 1 else {
+                return "ERROR: Refused to double-click at (0,0). The target element is not visible."
+            }
+            let apiPoint2  = CGPoint(x: apiX2, y: apiY2)
+            let quartzPt2  = apiToScreen(apiPoint2, capture)
+            let appKitPt2  = quartzToAppKit(quartzPt2)
+            NSLog("[BrainEngine] double_click: api=(\(Int(apiX2)),\(Int(apiY2))) → quartz=(\(Int(quartzPt2.x)),\(Int(quartzPt2.y)))")
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                cursor.animateTo(screenPoint: appKitPt2) { cont.resume() }
+            }
+            await mouse.doubleClick(at: quartzPt2)
+            cursor.animateClick()
+            return "Double-clicked at (\(Int(quartzPt2.x)), \(Int(quartzPt2.y)))"
+
         case "type":
             let text = input["text"]?.value as? String ?? ""
             NSLog("[BrainEngine] type: \"\(text.prefix(40))\"")
@@ -288,6 +334,20 @@ final class BrainEngine {
     }
 
     // MARK: - Helpers
+
+    // MARK: - Debug
+
+    /// Saves a base64 PNG screenshot to ~/Desktop/LioDebug/ for inspection.
+    /// Remove or disable this when not debugging.
+    private func debugSaveScreenshot(_ base64: String, label: String) {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Desktop/LioDebug")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        guard let data = Data(base64Encoded: base64) else { return }
+        let file = dir.appendingPathComponent("\(label).png")
+        try? data.write(to: file)
+        NSLog("[BrainEngine] debug screenshot → \(file.path)")
+    }
 
     private func scheduleReset() {
         Task {
